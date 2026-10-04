@@ -20,20 +20,21 @@ English Buddy is a lightweight English-learning app for children, built with Rea
 3. Set `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` in `.env` using the project URL and publishable/anon key from Supabase.
 4. Run `npm run dev`.
 
-The app uses sample words in demo mode when the environment variables are not set. If values are present but incorrect, database errors appear in the app rather than being silently replaced with sample data.
+The app starts with an empty word list when the environment variables are not set. If values are present but incorrect, database errors appear in the app rather than being silently replaced with sample data.
 
 ## Supabase schema
 
 1. In the Supabase dashboard, open **SQL Editor**.
-2. Run the SQL in `supabase/schema.sql`. If you already ran an earlier version, run the whole file again; the migration adds the profile/progress unique indexes required for saved learning results.
-3. In **Authentication → URL Configuration**, set the Site URL to `https://mohdshehab2009-byte.github.io/english-buddy/` and allow that URL as a redirect URL. Add the local development URL too if you test sign-up locally.
-4. Open the app, choose **Parent view**, and create/sign in to a parent account. Confirm the email if Supabase asks.
+2. Run the SQL in `supabase/schema.sql`. If you already ran an earlier version, run the whole file again; it no longer inserts sample vocabulary.
+3. To erase every existing vocabulary row, run `supabase/reset-vocabulary.sql` once in the SQL Editor. This also removes word-practice progress linked to those words; quiz history remains.
+4. In **Authentication → URL Configuration**, set the Site URL to `https://mohdshehab2009-byte.github.io/english-buddy/` and allow that URL as a redirect URL. Add the local development URL too if you test sign-up locally.
+5. Open the app, choose **Parent view**, and create/sign in to a parent account. Confirm the email if Supabase asks.
 
 Vocabulary is readable without signing in. Children can add a word and Arabic meaning without an account; public submissions are limited to these two fields and length-checked by RLS. Anyone can add rows, so do not collect personal or sensitive information in vocabulary. Authenticated parents can add richer words and edit or delete only words owned by their account. Profiles, progress, quiz results, and achievements are restricted to the owning parent by RLS. When a parent is signed in, quiz results and spelling/translation practice are saved to that parent's child profile.
 
 Children can add a word from **Child view → My Words** using just its English spelling and Arabic meaning. Child words are saved directly to the shared Supabase vocabulary table and included in future quizzes; each quiz uses up to the 10 most recently added words.
 
-The app currently creates one child profile named Musa per parent account. Quiz results and best spelling/translation scores appear in the child's **Progress** view and the parent's **Child Progress** and **Reports** views.
+The app creates or updates one child profile named Mujtaba per parent account. Quiz results and best spelling/translation scores appear in the child's **Progress** view and the parent's **Child Progress** and **Reports** views.
 
 ## Production build
 

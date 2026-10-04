@@ -155,7 +155,7 @@ export function ParentDashboard({
                     value={draft.english}
                     onChange={(event) => setDraft((current) => ({ ...current, english: event.target.value }))}
                     className="mt-1 w-full rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm outline-none ring-0 transition focus:border-sky-400 focus:bg-white"
-                    placeholder="garden"
+                    placeholder="butterfly"
                   />
                 </label>
                 <label className="text-sm font-medium text-slate-600">
@@ -190,7 +190,7 @@ export function ParentDashboard({
                     value={draft.example}
                     onChange={(event) => setDraft((current) => ({ ...current, example: event.target.value }))}
                     className="mt-1 w-full rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm outline-none ring-0 transition focus:border-sky-400 focus:bg-white"
-                    placeholder="We played in the garden after school."
+                    placeholder="A butterfly has colorful wings."
                   />
                 </label>
                 <label className="text-sm font-medium text-slate-600">
@@ -370,7 +370,7 @@ export function ParentDashboard({
         return (
           <div className="grid gap-4 md:grid-cols-2">
             {[
-              ['Child profile', 'Musa is in Grade 2'],
+              ['Child profile', 'Mujtaba is in Grade 2'],
               ['Notification reminders', 'Enabled'],
               ['Parent notes', '3 active lesson hints'],
               ['Supabase sync', 'Connected'],
@@ -405,7 +405,7 @@ export function ParentDashboard({
                 <div className="mt-4 flex items-center gap-3">
                   <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-to-br from-yellow-200 to-orange-200 text-3xl">🧒</div>
                   <div>
-                    <p className="text-xl font-bold text-slate-800">Musa</p>
+                    <p className="text-xl font-bold text-slate-800">Mujtaba</p>
                     <p className="text-sm text-slate-500">Level: Explorer</p>
                   </div>
                 </div>

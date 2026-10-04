@@ -74,7 +74,7 @@ function App() {
       return
     }
 
-    void ensureChildProfile(session.user.id, 'Musa').then((id) => {
+    void ensureChildProfile(session.user.id, 'Mujtaba').then((id) => {
       if (active) setProfileId(id)
     }).catch((error: unknown) => {
       if (active) {

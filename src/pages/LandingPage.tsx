@@ -99,20 +99,20 @@ export function LandingPage({ onStart }: LandingPageProps) {
                 <div className="flex items-start justify-between">
                   <div>
                     <p className="text-xs font-bold uppercase tracking-[0.2em] text-sky-100">Your learning space</p>
-                    <p className="mt-2 text-2xl font-black">Hello, Musa! 👋</p>
+                    <p className="mt-2 text-2xl font-black">Hello, Mujtaba! 👋</p>
                   </div>
                   <span className="rounded-2xl bg-white/15 px-3 py-2 text-sm font-bold">Level 3</span>
                 </div>
                 <div className="mt-7 rounded-3xl bg-white p-5 text-slate-800 shadow-xl">
                   <div className="flex items-center justify-between">
                     <div>
-                      <p className="text-xs font-bold uppercase tracking-[0.16em] text-slate-500">Word of the day</p>
-                      <p className="mt-2 text-3xl font-black">garden</p>
-                      <p className="text-lg font-medium text-sky-700" lang="ar" dir="rtl">حديقة</p>
+                      <p className="text-xs font-bold uppercase tracking-[0.16em] text-slate-500">Your word list</p>
+                      <p className="mt-2 text-2xl font-black">Ready to begin?</p>
+                      <p className="text-sm font-medium text-sky-700">Add your first word</p>
                     </div>
                     <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-amber-100 text-4xl">🌼</div>
                   </div>
-                  <p className="mt-4 rounded-2xl bg-slate-50 p-3 text-sm text-slate-600">We played in the garden after school.</p>
+                  <p className="mt-4 rounded-2xl bg-slate-50 p-3 text-sm text-slate-600">Build a personal vocabulary list one word at a time.</p>
                   <div className="mt-4 flex items-center gap-2">
                     <div className="h-2 flex-1 rounded-full bg-slate-100">
                       <div className="h-2 w-2/3 rounded-full bg-gradient-to-r from-sky-400 to-indigo-500" />

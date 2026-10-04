@@ -1,4 +1,3 @@
-import { initialVocabulary } from '../data/mockData'
 import type { VocabularyItem } from '../types'
 import { isSupabaseConfigured, supabase } from './supabase'
 
@@ -18,7 +17,7 @@ const mapRow = (row: Record<string, unknown>, canEdit = false): VocabularyItem =
 
 export async function loadVocabulary(userId?: string): Promise<VocabularyItem[]> {
   if (!isSupabaseConfigured || !supabase) {
-    return initialVocabulary
+    return []
   }
 
   const fields = 'id,english,arabic,example_sentence,pronunciation,unit,week,difficulty,category,image'

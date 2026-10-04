@@ -183,22 +183,3 @@ create policy "Parents can manage own achievements"
         and profiles.parent_id = (select auth.uid())
     )
   );
-
-insert into vocabulary (owner_id, english, arabic, example_sentence, pronunciation, unit, week, difficulty, category, image)
-select null, seed.english, seed.arabic, seed.example_sentence, seed.pronunciation, seed.unit, seed.week, seed.difficulty, seed.category, seed.image
-from (values
-  ('garden', 'حديقة', 'We played in the garden after school.', '/ˈɡɑːrdn/', 'Nature', 'Week 1', 'Easy', 'Places', '🌼'),
-  ('library', 'مكتبة', 'The library is full of interesting books.', '/ˈlaɪbreri/', 'School', 'Week 1', 'Easy', 'Places', '📚'),
-  ('brave', 'شجاع', 'He was brave and spoke in front of the class.', '/breɪv/', 'Character', 'Week 2', 'Medium', 'Feelings', '🦁'),
-  ('healthy', 'صحي', 'Eating fruit keeps us healthy.', '/ˈhɛlθi/', 'Health', 'Week 2', 'Medium', 'Body', '🥗'),
-  ('friendship', 'صداقة', 'Friendship is an important part of school life.', '/ˈfrendʃɪp/', 'Relationships', 'Week 3', 'Medium', 'People', '🤝'),
-  ('science', 'علوم', 'Science helps us learn how the world works.', '/ˈsaɪəns/', 'School', 'Week 3', 'Medium', 'Subjects', '🔬'),
-  ('forest', 'غابة', 'The fox hid in the forest.', '/ˈfɒrɪst/', 'Nature', 'Week 4', 'Hard', 'Places', '🌲'),
-  ('practice', 'ممارسة', 'You need practice to improve your spelling.', '/ˈpræktɪs/', 'Learning', 'Week 4', 'Hard', 'Skills', '🎯')
-) as seed(english, arabic, example_sentence, pronunciation, unit, week, difficulty, category, image)
-where not exists (
-  select 1
-  from vocabulary existing
-  where existing.owner_id is null
-    and existing.english = seed.english
-);

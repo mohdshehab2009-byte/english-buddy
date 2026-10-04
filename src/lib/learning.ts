@@ -13,7 +13,7 @@ export async function ensureChildProfile(parentId: string, childName: string): P
 
   const { data: existing, error: lookupError } = await supabase
     .from('profiles')
-    .select('id')
+    .select('id,name')
     .eq('parent_id', parentId)
     .maybeSingle()
 
@@ -21,6 +21,16 @@ export async function ensureChildProfile(parentId: string, childName: string): P
     throw new Error(`Could not load the child profile: ${lookupError.message}`)
   }
   if (existing) {
+    if (existing.name !== childName) {
+      const { error: updateError } = await supabase
+        .from('profiles')
+        .update({ name: childName })
+        .eq('id', existing.id)
+
+      if (updateError) {
+        throw new Error(`Could not update the child profile name: ${updateError.message}`)
+      }
+    }
     return existing.id
   }
 
