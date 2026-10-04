@@ -2,11 +2,17 @@ import { useMemo, useState } from 'react'
 import { Sidebar } from '../components/Sidebar'
 import { StatCard } from '../components/StatCard'
 import { WordCard } from '../components/WordCard'
-import { achievements, childProfile, progressStats, weeklyQuiz } from '../data/mockData'
-import type { VocabularyItem } from '../types'
+import { achievements, childProfile, weeklyQuiz } from '../data/mockData'
+import type { QuizResult, VocabularyItem, WordProgress } from '../types'
 
 interface ChildDashboardProps {
   vocabulary: VocabularyItem[]
+  profileId: string | null
+  canSaveProgress: boolean
+  wordProgress: WordProgress[]
+  quizResults: QuizResult[]
+  onSaveWordPractice: (wordId: string, kind: 'spelling' | 'translation', score: number) => Promise<WordProgress>
+  onSaveQuizResult: (score: number, totalQuestions: number) => Promise<QuizResult>
 }
 
 const childNav = [
@@ -18,37 +24,113 @@ const childNav = [
   { label: 'Achievements', value: 'achievements', icon: '🏅' },
 ]
 
-export function ChildDashboard({ vocabulary }: ChildDashboardProps) {
+const normalizeAnswer = (value: string) =>
+  value
+    .trim()
+    .toLocaleLowerCase()
+    .replace(/[\u064B-\u065F\u0670]/g, '')
+    .replace(/[أإآ]/g, 'ا')
+    .replace(/\s+/g, ' ')
+
+export function ChildDashboard({
+  vocabulary,
+  profileId,
+  canSaveProgress,
+  wordProgress,
+  quizResults,
+  onSaveWordPractice,
+  onSaveQuizResult,
+}: ChildDashboardProps) {
   const [page, setPage] = useState('home')
   const [selectedWord, setSelectedWord] = useState(vocabulary[0] ?? null)
   const [score, setScore] = useState(0)
   const [quizIndex, setQuizIndex] = useState(0)
+  const [selectedChoice, setSelectedChoice] = useState<string | null>(null)
+  const [quizFinished, setQuizFinished] = useState(false)
+  const [quizFinalScore, setQuizFinalScore] = useState<number | null>(null)
+  const [quizSaving, setQuizSaving] = useState(false)
+  const [quizStatus, setQuizStatus] = useState('')
+  const [practiceKind, setPracticeKind] = useState<'spelling' | 'translation' | null>(null)
+  const [practiceAnswer, setPracticeAnswer] = useState('')
+  const [practiceSaving, setPracticeSaving] = useState(false)
+  const [practiceStatus, setPracticeStatus] = useState('')
 
   const quizQuestion = weeklyQuiz[quizIndex]
+  const progressByWord = useMemo(() => new Map(wordProgress.map((item) => [item.wordId, item])), [wordProgress])
 
   const averageMastery = useMemo(() => {
-    if (!vocabulary.length) {
+    if (!wordProgress.length) {
       return 0
     }
+    return Math.round(wordProgress.reduce((sum, item) => sum + item.mastery, 0) / wordProgress.length)
+  }, [wordProgress])
 
-    const scoreByDifficulty: Record<string, number> = {
-      Easy: 85,
-      Medium: 72,
-      Hard: 60,
+  const persistQuizResult = async (finalScore: number) => {
+    if (!canSaveProgress || !profileId) {
+      setQuizStatus('Quiz complete. Sign in as a parent on this device to save results.')
+      return
     }
 
-    const total = vocabulary.reduce((sum, item) => sum + (scoreByDifficulty[item.difficulty] ?? 70), 0)
-    return Math.round(total / vocabulary.length)
-  }, [vocabulary])
+    setQuizSaving(true)
+    setQuizStatus('')
+    try {
+      await onSaveQuizResult(finalScore, weeklyQuiz.length)
+      setQuizStatus('Quiz result saved to your progress!')
+    } catch (error) {
+      setQuizStatus(error instanceof Error ? error.message : 'Could not save the quiz result.')
+    } finally {
+      setQuizSaving(false)
+    }
+  }
 
   const handleQuizAnswer = (choice: string) => {
-    if (choice === quizQuestion.answer) {
-      setScore((current) => current + 1)
-    }
+    if (selectedChoice || quizFinished) return
+    setSelectedChoice(choice)
+    setQuizStatus('')
+  }
+
+  const handleQuizContinue = async () => {
+    if (!selectedChoice || quizFinished) return
+    const nextScore = score + Number(selectedChoice === quizQuestion.answer)
 
     if (quizIndex < weeklyQuiz.length - 1) {
+      setScore(nextScore)
       setQuizIndex((current) => current + 1)
+      setSelectedChoice(null)
+      return
     }
+
+    setScore(nextScore)
+    setQuizFinished(true)
+    setQuizFinalScore(nextScore)
+    void persistQuizResult(nextScore)
+  }
+
+  const handlePracticeCheck = async () => {
+    if (!selectedWord || !practiceKind || practiceSaving) return
+    const expected = practiceKind === 'spelling' ? selectedWord.english : selectedWord.arabic
+    const correct = normalizeAnswer(practiceAnswer) === normalizeAnswer(expected)
+    const points = correct ? 100 : 0
+    setPracticeSaving(true)
+    setPracticeStatus(correct ? 'Correct! Great work.' : `Not quite—try again. The answer is ${expected}.`)
+
+    if (canSaveProgress && profileId) {
+      try {
+        await onSaveWordPractice(selectedWord.id, practiceKind, points)
+        setPracticeStatus(`${correct ? 'Correct!' : 'Practice saved.'} Your ${practiceKind} progress is saved.`)
+      } catch (error) {
+        setPracticeStatus(error instanceof Error ? error.message : 'Could not save your practice result.')
+      }
+    } else {
+      setPracticeStatus(`${correct ? 'Correct!' : 'Practice complete.'} Sign in as a parent on this device to save progress.`)
+    }
+    setPracticeSaving(false)
+  }
+
+  const startPractice = (kind: 'spelling' | 'translation') => {
+    setPracticeKind(kind)
+    setPracticeAnswer('')
+    setPracticeStatus('')
   }
 
   const renderPage = () => {
@@ -77,12 +159,63 @@ export function ChildDashboard({ vocabulary }: ChildDashboardProps) {
               <h3 className="mt-3 text-3xl font-black text-slate-800">{selectedWord?.english ?? 'No word selected'}</h3>
               <p className="mt-1 text-lg text-sky-700">{selectedWord?.arabic ?? '—'}</p>
               <p className="mt-4 text-sm text-slate-600">{selectedWord?.example ?? 'Start with a word and practice listening and spelling.'}</p>
+              {selectedWord ? (
+                <p className="mt-2 text-xs font-semibold text-slate-500">
+                  Best saved scores — spelling {progressByWord.get(selectedWord.id)?.spellingScore ?? 0}% · translation {progressByWord.get(selectedWord.id)?.translationScore ?? 0}%
+                </p>
+              ) : null}
 
               <div className="mt-6 flex flex-wrap gap-3">
-                <button className="rounded-2xl bg-sky-500 px-4 py-2.5 text-sm font-bold text-white shadow-lg shadow-sky-200">🔊 Listen</button>
-                <button className="rounded-2xl bg-amber-400 px-4 py-2.5 text-sm font-bold text-slate-800 shadow-lg shadow-amber-200">✍️ Spell</button>
-                <button className="rounded-2xl bg-emerald-500 px-4 py-2.5 text-sm font-bold text-white shadow-lg shadow-emerald-200">🌍 Translate</button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (!selectedWord || !('speechSynthesis' in window)) {
+                      setPracticeStatus('Audio pronunciation is not available in this browser.')
+                      return
+                    }
+                    window.speechSynthesis.speak(new SpeechSynthesisUtterance(selectedWord.english))
+                  }}
+                  className="min-h-11 rounded-2xl bg-sky-500 px-4 py-2.5 text-sm font-bold text-white shadow-lg shadow-sky-200"
+                >
+                  🔊 Listen
+                </button>
+                <button type="button" onClick={() => startPractice('spelling')} className="min-h-11 rounded-2xl bg-amber-400 px-4 py-2.5 text-sm font-bold text-slate-800 shadow-lg shadow-amber-200">✍️ Spell</button>
+                <button type="button" onClick={() => startPractice('translation')} className="min-h-11 rounded-2xl bg-emerald-500 px-4 py-2.5 text-sm font-bold text-white shadow-lg shadow-emerald-200">🌍 Translate</button>
               </div>
+
+              {practiceKind ? (
+                <form
+                  onSubmit={(event) => {
+                    event.preventDefault()
+                    void handlePracticeCheck()
+                  }}
+                  className="mt-5 rounded-2xl border border-slate-200 bg-slate-50 p-4"
+                >
+                  <label className="block text-sm font-bold text-slate-700">
+                    {practiceKind === 'spelling'
+                      ? `Spell the English word for “${selectedWord?.arabic ?? ''}”`
+                      : `Translate “${selectedWord?.english ?? ''}” into Arabic`}
+                    <input
+                      autoComplete="off"
+                      dir={practiceKind === 'translation' ? 'rtl' : 'ltr'}
+                      required
+                      value={practiceAnswer}
+                      onChange={(event) => setPracticeAnswer(event.target.value)}
+                      className="mt-2 min-h-12 w-full rounded-xl border border-slate-200 bg-white px-3 text-base outline-none focus:border-sky-400"
+                    />
+                  </label>
+                  <button
+                    type="submit"
+                    disabled={practiceSaving}
+                    className="mt-3 min-h-11 rounded-xl bg-slate-900 px-4 text-sm font-bold text-white disabled:opacity-60"
+                  >
+                    {practiceSaving ? 'Saving…' : 'Check answer'}
+                  </button>
+                  {practiceStatus ? <p role="status" className="mt-3 text-sm font-medium text-slate-700">{practiceStatus}</p> : null}
+                </form>
+              ) : practiceStatus ? (
+                <p role="status" className="mt-4 text-sm text-slate-600">{practiceStatus}</p>
+              ) : null}
             </div>
 
             <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
@@ -105,47 +238,134 @@ export function ChildDashboard({ vocabulary }: ChildDashboardProps) {
             <div className="mb-5 flex items-center justify-between">
               <div>
                 <p className="text-sm uppercase tracking-[0.2em] text-slate-500">Weekly Quiz</p>
-                <h3 className="mt-2 text-2xl font-black text-slate-800">Question {Math.min(quizIndex + 1, weeklyQuiz.length)}</h3>
+                <h3 className="mt-2 text-2xl font-black text-slate-800">{quizFinished ? 'Quiz complete!' : `Question ${quizIndex + 1}`}</h3>
               </div>
               <span className="rounded-full bg-amber-100 px-3 py-1 text-sm font-bold text-amber-700">Score: {score}/{weeklyQuiz.length}</span>
             </div>
 
-            <div className="space-y-4">
-              <p className="text-xl font-bold text-slate-800">{quizQuestion.prompt}</p>
-              <div className="grid gap-3 md:grid-cols-2">
-                {quizQuestion.choices.map((choice) => (
+            {quizFinished ? (
+              <div className="rounded-2xl bg-emerald-50 p-5">
+                <p className="text-lg font-bold text-emerald-900">
+                  You got {score} out of {weeklyQuiz.length} correct!
+                </p>
+                <p role="status" className="mt-2 text-sm text-emerald-800">{quizStatus}</p>
+                {!canSaveProgress ? (
+                  <p className="mt-2 text-sm text-emerald-800">Results are not saved while signed out. Parent sign-in is required to keep progress.</p>
+                ) : quizStatus.startsWith('Could not save') ? (
                   <button
-                    key={choice}
                     type="button"
-                    onClick={() => handleQuizAnswer(choice)}
-                    className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-left text-base font-semibold text-slate-700 transition hover:border-sky-400 hover:bg-sky-50"
+                    disabled={quizSaving}
+                    onClick={() => void persistQuizResult(quizFinalScore ?? score)}
+                    className="mt-4 min-h-11 rounded-xl bg-white px-4 text-sm font-bold text-emerald-800 shadow-sm"
                   >
-                    {choice}
+                    Retry saving
                   </button>
-                ))}
+                ) : null}
+                <button
+                  type="button"
+                  onClick={() => {
+                    setScore(0)
+                    setQuizIndex(0)
+                    setSelectedChoice(null)
+                    setQuizFinished(false)
+                    setQuizFinalScore(null)
+                    setQuizStatus('')
+                  }}
+                  className="mt-4 block min-h-11 rounded-xl bg-white px-4 text-sm font-bold text-slate-700 shadow-sm"
+                >
+                  Try again
+                </button>
               </div>
-              <p className="rounded-2xl bg-emerald-50 p-3 text-sm text-emerald-700">{quizQuestion.explanation}</p>
-            </div>
+            ) : (
+              <div className="space-y-4">
+                <p className="text-xl font-bold text-slate-800">{quizQuestion.prompt}</p>
+                <div className="grid gap-3 md:grid-cols-2">
+                  {quizQuestion.choices.map((choice) => (
+                    <button
+                      key={choice}
+                      type="button"
+                      aria-pressed={selectedChoice === choice}
+                      onClick={() => handleQuizAnswer(choice)}
+                      className={[
+                        'min-h-12 rounded-2xl border px-4 py-3 text-left text-base font-semibold transition',
+                        selectedChoice === choice
+                          ? 'border-sky-500 bg-sky-100 text-sky-900'
+                          : 'border-slate-200 bg-slate-50 text-slate-700 hover:border-sky-400 hover:bg-sky-50',
+                      ].join(' ')}
+                    >
+                      {choice}
+                    </button>
+                  ))}
+                </div>
+                {selectedChoice ? (
+                  <>
+                    <p className="rounded-2xl bg-emerald-50 p-3 text-sm text-emerald-700">{quizQuestion.explanation}</p>
+                    <button
+                      type="button"
+                      onClick={() => void handleQuizContinue()}
+                      disabled={quizSaving}
+                      className="min-h-11 rounded-xl bg-indigo-600 px-5 text-sm font-bold text-white disabled:opacity-60"
+                    >
+                      {quizSaving ? 'Saving…' : quizIndex === weeklyQuiz.length - 1 ? 'Finish quiz' : 'Next question'}
+                    </button>
+                  </>
+                ) : null}
+              </div>
+            )}
           </div>
         )
 
       case 'progress':
         return (
-          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-            {progressStats.map((item) => (
-              <div key={item.id} className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
-                <div className="mb-3 flex items-center justify-between">
-                  <p className="text-sm font-medium text-slate-500">{item.label}</p>
-                  <span className="text-xs font-bold text-slate-700">{item.value}%</span>
+          <div className="space-y-5">
+            <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+              {[
+                { id: 'mastery', label: 'Average mastery', value: averageMastery },
+                { id: 'spelling', label: 'Spelling best', value: wordProgress.length ? Math.round(wordProgress.reduce((sum, item) => sum + item.spellingScore, 0) / wordProgress.length) : 0 },
+                { id: 'translation', label: 'Translation best', value: wordProgress.length ? Math.round(wordProgress.reduce((sum, item) => sum + item.translationScore, 0) / wordProgress.length) : 0 },
+                { id: 'quiz', label: 'Latest quiz', value: quizResults[0] ? Math.round((quizResults[0].score / quizResults[0].totalQuestions) * 100) : 0 },
+              ].map((item) => (
+                <div key={item.id} className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
+                  <div className="mb-3 flex items-center justify-between">
+                    <p className="text-sm font-medium text-slate-500">{item.label}</p>
+                    <span className="text-xs font-bold text-slate-700">{item.value}%</span>
+                  </div>
+                  <div className="h-3 rounded-full bg-slate-100">
+                    <div className="h-3 rounded-full bg-gradient-to-r from-sky-400 to-indigo-500" style={{ width: `${item.value}%` }} />
+                  </div>
                 </div>
-                <div className="h-3 rounded-full bg-slate-100">
-                  <div
-                    className="h-3 rounded-full bg-gradient-to-r from-sky-400 to-indigo-500"
-                    style={{ width: `${item.value}%` }}
-                  />
-                </div>
-              </div>
-            ))}
+              ))}
+            </div>
+            <section className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
+              <h3 className="text-lg font-bold text-slate-800">Recent quiz results</h3>
+              {quizResults.length ? (
+                <ul className="mt-3 space-y-2">
+                  {quizResults.slice(0, 5).map((result) => (
+                    <li key={result.id} className="flex justify-between gap-3 rounded-xl bg-slate-50 px-3 py-2 text-sm">
+                      <span className="text-slate-600">{new Date(result.completedAt).toLocaleDateString()}</span>
+                      <span className="font-bold text-slate-800">{result.score}/{result.totalQuestions} correct</span>
+                    </li>
+                  ))}
+                </ul>
+              ) : <p className="mt-2 text-sm text-slate-500">No saved quiz results yet.</p>}
+              {!canSaveProgress ? <p className="mt-3 text-sm text-amber-700">Sign in as a parent on this device to save future progress.</p> : null}
+            </section>
+            <section className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
+              <h3 className="text-lg font-bold text-slate-800">Word practice</h3>
+              {wordProgress.length ? (
+                <ul className="mt-3 space-y-2">
+                  {wordProgress.map((record) => {
+                    const word = vocabulary.find((item) => item.id === record.wordId)
+                    return (
+                      <li key={record.wordId} className="flex flex-wrap justify-between gap-3 rounded-xl bg-slate-50 px-3 py-2 text-sm">
+                        <span className="font-semibold text-slate-800">{word?.english ?? 'Vocabulary word'}</span>
+                        <span className="text-slate-600">Spelling {record.spellingScore}% · Translation {record.translationScore}%</span>
+                      </li>
+                    )
+                  })}
+                </ul>
+              ) : <p className="mt-2 text-sm text-slate-500">Practice a word to start tracking progress.</p>}
+            </section>
           </div>
         )
 
@@ -175,7 +395,7 @@ export function ChildDashboard({ vocabulary }: ChildDashboardProps) {
         return (
           <div className="space-y-5">
             <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-              <StatCard title="Words mastered" value={`${Math.min(20, vocabulary.length + 10)}`} subtitle="This week" tone="sky" />
+              <StatCard title="Words practiced" value={`${wordProgress.length}`} subtitle="With saved results" tone="sky" />
               <StatCard title="Reading" value={`${averageMastery}%`} subtitle="Strong progress" tone="green" />
               <StatCard title="Streak" value={`${childProfile.streak} days`} subtitle="No break" tone="amber" />
               <StatCard title="Points" value={`${childProfile.points}`} subtitle="Reward total" tone="rose" />
@@ -193,7 +413,7 @@ export function ChildDashboard({ vocabulary }: ChildDashboardProps) {
                 <p className="text-sm uppercase tracking-[0.2em] text-slate-500">This week</p>
                 <p className="mt-2 text-3xl font-black text-slate-800">20 words</p>
                 <div className="mt-5 rounded-2xl bg-sky-50 p-3 text-sm text-sky-700">
-                  10 new words and 10 review words planned.
+                  {quizResults.length} quiz {quizResults.length === 1 ? 'result saved' : 'results saved'} so far.
                 </div>
               </div>
             </div>

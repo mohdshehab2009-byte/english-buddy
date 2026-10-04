@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react'
 import { Sidebar } from '../components/Sidebar'
 import { StatCard } from '../components/StatCard'
 import { WordCard } from '../components/WordCard'
-import type { VocabularyItem } from '../types'
+import type { QuizResult, VocabularyItem, WordProgress } from '../types'
 
 interface ParentDashboardProps {
   vocabulary: VocabularyItem[]
@@ -10,6 +10,8 @@ interface ParentDashboardProps {
   onDeleteWord: (id: string) => Promise<void>
   onUpdateWord: (id: string, item: VocabularyItem) => Promise<void>
   canManageAllWords?: boolean
+  wordProgress: WordProgress[]
+  quizResults: QuizResult[]
 }
 
 const createEmptyWord = (): VocabularyItem => ({
@@ -35,7 +37,15 @@ const parentNav = [
   { label: 'Settings', value: 'settings', icon: '⚙️' },
 ]
 
-export function ParentDashboard({ vocabulary, onAddWord, onDeleteWord, onUpdateWord, canManageAllWords = false }: ParentDashboardProps) {
+export function ParentDashboard({
+  vocabulary,
+  onAddWord,
+  onDeleteWord,
+  onUpdateWord,
+  canManageAllWords = false,
+  wordProgress,
+  quizResults,
+}: ParentDashboardProps) {
   const [page, setPage] = useState('dashboard')
   const [draft, setDraft] = useState<VocabularyItem>(createEmptyWord())
   const [editingId, setEditingId] = useState<string | null>(null)
@@ -100,9 +110,19 @@ export function ParentDashboard({ vocabulary, onAddWord, onDeleteWord, onUpdateW
 
   const stats = [
     { title: 'Words', value: `${vocabulary.length}`, subtitle: 'in the library', tone: 'sky' as const },
-    { title: 'Avg mastery', value: '82%', subtitle: 'happy learners', tone: 'green' as const },
-    { title: 'This week', value: '4', subtitle: 'new units', tone: 'amber' as const },
-    { title: 'Review rate', value: '93%', subtitle: 'strong recall', tone: 'rose' as const },
+    {
+      title: 'Avg mastery',
+      value: `${wordProgress.length ? Math.round(wordProgress.reduce((sum, item) => sum + item.mastery, 0) / wordProgress.length) : 0}%`,
+      subtitle: `${wordProgress.length} words practiced`,
+      tone: 'green' as const,
+    },
+    { title: 'Quiz attempts', value: `${quizResults.length}`, subtitle: 'saved results', tone: 'amber' as const },
+    {
+      title: 'Latest quiz',
+      value: quizResults[0] ? `${Math.round((quizResults[0].score / quizResults[0].totalQuestions) * 100)}%` : '—',
+      subtitle: quizResults[0] ? `${quizResults[0].score}/${quizResults[0].totalQuestions} correct` : 'no results yet',
+      tone: 'rose' as const,
+    },
   ]
 
   const renderPage = () => {
@@ -267,21 +287,53 @@ export function ParentDashboard({ vocabulary, onAddWord, onDeleteWord, onUpdateW
 
       case 'progress':
         return (
-          <div className="grid gap-4 md:grid-cols-2">
-            {['Spelling', 'Listening', 'Reading', 'Speaking'].map((label, index) => (
-              <div key={label} className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
-                <div className="mb-3 flex items-center justify-between">
-                  <p className="font-bold text-slate-800">{label}</p>
-                  <span className="text-sm font-semibold text-sky-700">{[82, 74, 90, 77][index]}%</span>
+          <div className="space-y-5">
+            <section className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
+              <h3 className="text-lg font-bold text-slate-800">Word practice scores</h3>
+              {wordProgress.length ? (
+                <div className="mt-4 space-y-3">
+                  {wordProgress.map((record) => {
+                    const word = vocabulary.find((item) => item.id === record.wordId)
+                    return (
+                      <div key={record.wordId} className="rounded-2xl bg-slate-50 p-4">
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                          <p className="font-bold text-slate-800">{word?.english ?? 'Vocabulary word'}</p>
+                          <span className="text-xs text-slate-500">Mastery {record.mastery}%</span>
+                        </div>
+                        <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                          {[
+                            ['Spelling', record.spellingScore],
+                            ['Translation', record.translationScore],
+                          ].map(([label, value]) => (
+                            <div key={label}>
+                              <div className="mb-1 flex justify-between text-xs text-slate-500">
+                                <span>{label}</span><span>{value}%</span>
+                              </div>
+                              <div className="h-2 rounded-full bg-slate-200">
+                                <div className="h-2 rounded-full bg-gradient-to-r from-sky-400 to-indigo-500" style={{ width: `${value}%` }} />
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )
+                  })}
                 </div>
-                <div className="h-3 rounded-full bg-slate-100">
-                  <div
-                    className="h-3 rounded-full bg-gradient-to-r from-sky-400 to-indigo-500"
-                    style={{ width: `${[82, 74, 90, 77][index]}%` }}
-                  />
-                </div>
-              </div>
-            ))}
+              ) : <p className="mt-2 text-sm text-slate-500">No word practice has been saved yet.</p>}
+            </section>
+            <section className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
+              <h3 className="text-lg font-bold text-slate-800">Quiz history</h3>
+              {quizResults.length ? (
+                <ul className="mt-3 space-y-2">
+                  {quizResults.slice(0, 10).map((result) => (
+                    <li key={result.id} className="flex justify-between gap-3 rounded-xl bg-slate-50 px-3 py-2 text-sm">
+                      <span className="text-slate-600">{new Date(result.completedAt).toLocaleDateString()}</span>
+                      <span className="font-bold text-slate-800">{result.score}/{result.totalQuestions} correct</span>
+                    </li>
+                  ))}
+                </ul>
+              ) : <p className="mt-2 text-sm text-slate-500">No quiz attempts have been saved yet.</p>}
+            </section>
           </div>
         )
 
@@ -290,11 +342,18 @@ export function ParentDashboard({ vocabulary, onAddWord, onDeleteWord, onUpdateW
           <div className="grid gap-4 md:grid-cols-2">
             <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
               <p className="text-lg font-bold text-slate-800">Difficult words</p>
-              <ul className="mt-4 space-y-2 text-sm text-slate-600">
-                <li>• practice — needs review</li>
-                <li>• forest — spelling check</li>
-                <li>• friendship — translation practice</li>
-              </ul>
+              {wordProgress.length ? (
+                <ul className="mt-4 space-y-2 text-sm text-slate-600">
+                  {[...wordProgress]
+                    .sort((left, right) => left.mastery - right.mastery)
+                    .slice(0, 5)
+                    .map((record) => (
+                      <li key={record.wordId}>
+                        • {vocabulary.find((item) => item.id === record.wordId)?.english ?? 'Vocabulary word'} — {record.mastery}% mastery
+                      </li>
+                    ))}
+                </ul>
+              ) : <p className="mt-2 text-sm text-slate-500">No practice data yet.</p>}
             </div>
             <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
               <p className="text-lg font-bold text-slate-800">Focus plan</p>
@@ -314,7 +373,7 @@ export function ParentDashboard({ vocabulary, onAddWord, onDeleteWord, onUpdateW
               ['Child profile', 'Musa is in Grade 2'],
               ['Notification reminders', 'Enabled'],
               ['Parent notes', '3 active lesson hints'],
-              ['Supabase sync', 'Ready when configured'],
+              ['Supabase sync', 'Connected'],
             ].map(([title, value]) => (
               <div key={title} className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
                 <p className="text-sm text-slate-500">{title}</p>

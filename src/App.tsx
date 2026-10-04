@@ -1,23 +1,29 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import type { Session } from '@supabase/supabase-js'
 import { ParentAuth } from './components/ParentAuth'
 import { ChildDashboard } from './pages/ChildDashboard'
 import { LandingPage } from './pages/LandingPage'
 import { ParentDashboard } from './pages/ParentDashboard'
 import { addVocabularyItem, deleteVocabularyItem, loadVocabulary, updateVocabularyItem } from './lib/data'
+import { ensureChildProfile, loadLearningData, saveQuizResult, saveWordPractice } from './lib/learning'
 import { isSupabaseConfigured, supabase } from './lib/supabase'
-import type { Role, VocabularyItem } from './types'
+import type { QuizResult, Role, VocabularyItem, WordProgress } from './types'
 
 function App() {
   const [showLanding, setShowLanding] = useState(true)
   const [role, setRole] = useState<Role>('child')
   const [vocabulary, setVocabulary] = useState<VocabularyItem[]>([])
   const [session, setSession] = useState<Session | null>(null)
+  const sessionRef = useRef<Session | null>(null)
   const [authReady, setAuthReady] = useState(!isSupabaseConfigured)
   const [authError, setAuthError] = useState('')
   const [loadError, setLoadError] = useState('')
   const [reloadCount, setReloadCount] = useState(0)
   const [isLoading, setIsLoading] = useState(true)
+  const [profileId, setProfileId] = useState<string | null>(null)
+  const [wordProgress, setWordProgress] = useState<WordProgress[]>([])
+  const [quizResults, setQuizResults] = useState<QuizResult[]>([])
+  const [learningError, setLearningError] = useState('')
 
   useEffect(() => {
     if (!supabase) return
@@ -26,10 +32,18 @@ function App() {
     let receivedAuthEvent = false
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, nextSession) => {
       receivedAuthEvent = true
+      const previousUserId = sessionRef.current?.user.id
+      sessionRef.current = nextSession
       setSession(nextSession)
       setAuthReady(true)
       setIsLoading(true)
       setAuthError('')
+      if (previousUserId !== nextSession?.user.id) {
+        setProfileId(null)
+        setWordProgress([])
+        setQuizResults([])
+        setLearningError('')
+      }
     })
 
     void supabase.auth.getSession().then(({ data, error }) => {
@@ -37,6 +51,7 @@ function App() {
       if (error) {
         setAuthError(`Could not restore your parent session: ${error.message}`)
       } else {
+        sessionRef.current = data.session
         setSession(data.session)
       }
       setAuthReady(true)
@@ -51,6 +66,47 @@ function App() {
       subscription.unsubscribe()
     }
   }, [])
+
+  useEffect(() => {
+    let active = true
+
+    if (!session?.user.id || !supabase) {
+      return
+    }
+
+    void ensureChildProfile(session.user.id, 'Musa').then((id) => {
+      if (active) setProfileId(id)
+    }).catch((error: unknown) => {
+      if (active) {
+        setLearningError(error instanceof Error ? error.message : 'Could not prepare the child profile.')
+      }
+    })
+
+    return () => {
+      active = false
+    }
+  }, [session?.user.id])
+
+  useEffect(() => {
+    let active = true
+
+    if (!profileId) return
+
+    void loadLearningData(profileId).then(({ wordProgress: savedProgress, quizResults: savedQuizzes }) => {
+      if (!active) return
+      setWordProgress(savedProgress)
+      setQuizResults(savedQuizzes)
+      setLearningError('')
+    }).catch((error: unknown) => {
+      if (active) {
+        setLearningError(error instanceof Error ? error.message : 'Could not load learning progress.')
+      }
+    })
+
+    return () => {
+      active = false
+    }
+  }, [profileId])
 
   useEffect(() => {
     let active = true
@@ -87,6 +143,23 @@ function App() {
   const handleUpdateWord = async (id: string, item: VocabularyItem) => {
     const saved = await updateVocabularyItem(id, item)
     setVocabulary((current) => current.map((entry) => (entry.id === id ? saved : entry)))
+  }
+
+  const handleSaveQuizResult = async (score: number, totalQuestions: number) => {
+    if (!profileId) throw new Error('Sign in as a parent before saving quiz results.')
+    const savedResult = await saveQuizResult(profileId, score, totalQuestions)
+    setQuizResults((current) => [savedResult, ...current])
+    return savedResult
+  }
+
+  const handleSaveWordPractice = async (wordId: string, kind: 'spelling' | 'translation', score: number) => {
+    if (!profileId) throw new Error('Sign in as a parent before saving word progress.')
+    const savedProgress = await saveWordPractice(profileId, wordId, kind, score)
+    setWordProgress((current) => [
+      savedProgress,
+      ...current.filter((record) => record.wordId !== savedProgress.wordId),
+    ])
+    return savedProgress
   }
 
   const handleSignOut = async () => {
@@ -178,6 +251,12 @@ function App() {
           </p>
         ) : null}
 
+        {learningError ? (
+          <p role="alert" className="mb-4 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-800">
+            {learningError}
+          </p>
+        ) : null}
+
         {loadError ? (
           <div role="alert" className="mb-4 flex flex-col gap-3 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-800 sm:flex-row sm:items-center sm:justify-between">
             <span>{loadError}</span>
@@ -199,7 +278,15 @@ function App() {
           isLoading ? (
             <p role="status" className="rounded-2xl bg-white/80 p-5 text-sm font-semibold text-slate-600">Loading vocabulary…</p>
           ) : (
-            <ChildDashboard vocabulary={vocabulary} />
+            <ChildDashboard
+              vocabulary={vocabulary}
+              profileId={profileId}
+              canSaveProgress={Boolean(profileId)}
+              wordProgress={wordProgress}
+              quizResults={quizResults}
+              onSaveWordPractice={handleSaveWordPractice}
+              onSaveQuizResult={handleSaveQuizResult}
+            />
           )
         ) : isSupabaseConfigured && !authReady ? (
           <p role="status" className="rounded-2xl bg-white/80 p-5 text-sm font-semibold text-slate-600">Restoring parent session…</p>
@@ -212,6 +299,8 @@ function App() {
             onDeleteWord={handleDeleteWord}
             onUpdateWord={handleUpdateWord}
             canManageAllWords={!isSupabaseConfigured}
+            wordProgress={wordProgress}
+            quizResults={quizResults}
           />
         )}
       </div>

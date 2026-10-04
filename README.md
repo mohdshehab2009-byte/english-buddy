@@ -24,11 +24,13 @@ The app uses sample words in demo mode when the environment variables are not se
 ## Supabase schema
 
 1. In the Supabase dashboard, open **SQL Editor**.
-2. Run the SQL in `supabase/schema.sql`. It creates the tables, seeds the starter vocabulary, enables Row Level Security, and installs the access policies.
+2. Run the SQL in `supabase/schema.sql`. If you already ran an earlier version, run the whole file again; the migration adds the profile/progress unique indexes required for saved learning results.
 3. In **Authentication → URL Configuration**, set the Site URL to `https://mohdshehab2009-byte.github.io/english-buddy/` and allow that URL as a redirect URL. Add the local development URL too if you test sign-up locally.
 4. Open the app, choose **Parent view**, and create/sign in to a parent account. Confirm the email if Supabase asks.
 
-Vocabulary is readable without signing in. Only authenticated users can add vocabulary; each parent can edit or delete only words owned by that account. Profiles, progress, quiz results, and achievements are restricted to the owning parent by RLS.
+Vocabulary is readable without signing in. Only authenticated users can add vocabulary; each parent can edit or delete only words owned by that account. Profiles, progress, quiz results, and achievements are restricted to the owning parent by RLS. When a parent is signed in, quiz results and spelling/translation practice are saved to that parent's child profile. The child view can still be used signed out, but it will explain that those results are not saved.
+
+The app currently creates one child profile named Musa per parent account. Quiz results and best spelling/translation scores appear in the child's **Progress** view and the parent's **Child Progress** and **Reports** views.
 
 ## Production build
 

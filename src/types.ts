@@ -47,3 +47,18 @@ export interface ChildProfile {
   points: number
   level: string
 }
+
+export interface WordProgress {
+  wordId: string
+  mastery: number
+  spellingScore: number
+  translationScore: number
+  lastReviewed: string
+}
+
+export interface QuizResult {
+  id: string
+  score: number
+  totalQuestions: number
+  completedAt: string
+}

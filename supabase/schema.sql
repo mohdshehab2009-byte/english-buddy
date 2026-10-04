@@ -64,6 +64,8 @@ create index if not exists idx_vocabulary_unit on vocabulary(unit);
 create index if not exists idx_vocabulary_owner on vocabulary(owner_id);
 create index if not exists idx_profiles_parent on profiles(parent_id);
 create index if not exists idx_progress_profile on progress(profile_id);
+create unique index if not exists idx_profiles_one_child_per_parent on profiles(parent_id) where parent_id is not null;
+create unique index if not exists idx_progress_one_row_per_word on progress(profile_id, word_id);
 create index if not exists idx_quiz_profile on quiz_results(profile_id);
 create index if not exists idx_achievements_profile on achievements(profile_id);
 
