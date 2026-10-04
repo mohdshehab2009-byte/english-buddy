@@ -8,8 +8,8 @@ const mapRow = (row: Record<string, unknown>, canEdit = false): VocabularyItem =
   arabic: String(row.arabic ?? ''),
   example: String(row.example_sentence ?? row.example ?? ''),
   pronunciation: String(row.pronunciation ?? '/ˈpræktɪs/'),
-  unit: String(row.unit ?? 'Nature'),
-  week: String(row.week ?? 'Week 1'),
+  unit: String(row.unit ?? 'New words'),
+  week: String(row.week ?? 'Added words'),
   difficulty: (String(row.difficulty ?? 'Easy') as VocabularyItem['difficulty']),
   category: String(row.category ?? 'General'),
   image: typeof row.image === 'string' ? row.image : '📖',
@@ -39,26 +39,37 @@ export async function loadVocabulary(userId?: string): Promise<VocabularyItem[]>
   return (vocabularyResult.data ?? []).map((row) => mapRow(row, ownedIds.has(row.id)))
 }
 
-export async function addVocabularyItem(item: VocabularyItem): Promise<VocabularyItem> {
+export async function addVocabularyItem(
+  item: VocabularyItem,
+  options: { childContribution?: boolean } = {},
+): Promise<VocabularyItem> {
   if (!isSupabaseConfigured || !supabase) {
     throw new Error('Supabase is not configured. Cannot save vocabulary.')
   }
 
-  const { data, error } = await supabase
-    .from('vocabulary')
-    .insert({
-      english: item.english,
-      arabic: item.arabic,
-      example_sentence: item.example,
-      pronunciation: item.pronunciation,
-      unit: item.unit,
-      week: item.week,
-      difficulty: item.difficulty,
-      category: item.category,
-      image: item.image,
-    })
-    .select()
-    .single()
+  const columns = 'id,english,arabic,example_sentence,pronunciation,unit,week,difficulty,category,image'
+  const result = options.childContribution
+    ? await supabase
+      .from('vocabulary')
+      .insert({ english: item.english, arabic: item.arabic })
+      .select(columns)
+      .single()
+    : await supabase
+      .from('vocabulary')
+      .insert({
+        english: item.english,
+        arabic: item.arabic,
+        example_sentence: item.example,
+        pronunciation: item.pronunciation,
+        unit: item.unit,
+        week: item.week,
+        difficulty: item.difficulty,
+        category: item.category,
+        image: item.image,
+      })
+      .select(columns)
+      .single()
+  const { data, error } = result
 
   if (error) {
     throw new Error(`Could not add vocabulary: ${error.message}`)

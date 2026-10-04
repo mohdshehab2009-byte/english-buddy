@@ -80,6 +80,7 @@ revoke all on table profiles, vocabulary, progress, quiz_results, achievements f
 
 grant select (id, english, arabic, example_sentence, pronunciation, unit, week, difficulty, category, image, created_at)
   on table vocabulary to anon;
+grant insert (english, arabic) on table vocabulary to anon;
 grant select, insert, update, delete on table vocabulary to authenticated;
 grant select, insert, update, delete on table profiles, progress, quiz_results, achievements to authenticated;
 
@@ -87,6 +88,7 @@ drop policy if exists "Anyone can read vocabulary" on vocabulary;
 drop policy if exists "Parents can add owned vocabulary" on vocabulary;
 drop policy if exists "Parents can update owned vocabulary" on vocabulary;
 drop policy if exists "Parents can delete owned vocabulary" on vocabulary;
+drop policy if exists "Children can add words without signing in" on vocabulary;
 
 create policy "Anyone can read vocabulary"
   on vocabulary for select
@@ -108,6 +110,15 @@ create policy "Parents can delete owned vocabulary"
   on vocabulary for delete
   to authenticated
   using (owner_id = (select auth.uid()));
+
+create policy "Children can add words without signing in"
+  on vocabulary for insert
+  to anon
+  with check (
+    owner_id is null
+    and char_length(btrim(english)) between 1 and 100
+    and char_length(btrim(arabic)) between 1 and 100
+  );
 
 drop policy if exists "Parents can manage own profiles" on profiles;
 create policy "Parents can manage own profiles"

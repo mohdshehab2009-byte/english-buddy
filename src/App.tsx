@@ -131,18 +131,38 @@ function App() {
   }, [authReady, reloadCount, session?.user.id])
 
   const handleAddWord = async (item: VocabularyItem) => {
+    if (!supabase) {
+      const saved = { ...item, id: item.id || `demo-${Date.now()}` }
+      setVocabulary((current) => [saved, ...current])
+      return saved
+    }
+
     const saved = await addVocabularyItem(item)
     setVocabulary((current) => [saved, ...current.filter((entry) => entry.id !== item.id)])
     return saved
   }
 
+  const handleChildAddWord = async (item: VocabularyItem) => {
+    if (!supabase) {
+      const saved = { ...item, id: item.id || `demo-${Date.now()}` }
+      setVocabulary((current) => [saved, ...current])
+      return saved
+    }
+
+    const saved = await addVocabularyItem(item, { childContribution: true })
+    setVocabulary((current) => [saved, ...current.filter((entry) => entry.id !== item.id)])
+    return saved
+  }
+
   const handleDeleteWord = async (id: string) => {
-    await deleteVocabularyItem(id)
+    if (supabase) {
+      await deleteVocabularyItem(id)
+    }
     setVocabulary((current) => current.filter((item) => item.id !== id))
   }
 
   const handleUpdateWord = async (id: string, item: VocabularyItem) => {
-    const saved = await updateVocabularyItem(id, item)
+    const saved = supabase ? await updateVocabularyItem(id, item) : item
     setVocabulary((current) => current.map((entry) => (entry.id === id ? saved : entry)))
   }
 
@@ -283,11 +303,9 @@ function App() {
               vocabulary={vocabulary}
               profileId={profileId}
               canSaveProgress={Boolean(profileId)}
-              canAddWords={Boolean(session?.user.id)}
               wordProgress={wordProgress}
               quizResults={quizResults}
-              onAddVocabulary={handleAddWord}
-              onRequestParentSignIn={() => setRole('parent')}
+              onAddVocabulary={handleChildAddWord}
               onSaveWordPractice={handleSaveWordPractice}
               onSaveQuizResult={handleSaveQuizResult}
             />

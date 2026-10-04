@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react'
 import { Sidebar } from '../components/Sidebar'
 import { StatCard } from '../components/StatCard'
 import { WordCard } from '../components/WordCard'
-import { achievements, childProfile, weeklyQuiz } from '../data/mockData'
+import { achievements, childProfile, createVocabularyQuiz } from '../data/mockData'
 import type { QuizResult, VocabularyItem, WordProgress } from '../types'
 
 const createChildWord = (): VocabularyItem => ({
@@ -11,8 +11,8 @@ const createChildWord = (): VocabularyItem => ({
   arabic: '',
   example: '',
   pronunciation: '',
-  unit: 'My words',
-  week: 'This week',
+  unit: '',
+  week: '',
   difficulty: 'Easy',
   category: 'Child added',
   image: '🌟',
@@ -22,11 +22,9 @@ interface ChildDashboardProps {
   vocabulary: VocabularyItem[]
   profileId: string | null
   canSaveProgress: boolean
-  canAddWords: boolean
   wordProgress: WordProgress[]
   quizResults: QuizResult[]
   onAddVocabulary: (item: VocabularyItem) => Promise<VocabularyItem>
-  onRequestParentSignIn: () => void
   onSaveWordPractice: (wordId: string, kind: 'spelling' | 'translation', score: number) => Promise<WordProgress>
   onSaveQuizResult: (score: number, totalQuestions: number) => Promise<QuizResult>
 }
@@ -52,11 +50,9 @@ export function ChildDashboard({
   vocabulary,
   profileId,
   canSaveProgress,
-  canAddWords,
   wordProgress,
   quizResults,
   onAddVocabulary,
-  onRequestParentSignIn,
   onSaveWordPractice,
   onSaveQuizResult,
 }: ChildDashboardProps) {
@@ -79,7 +75,8 @@ export function ChildDashboard({
   const [practiceSaving, setPracticeSaving] = useState(false)
   const [practiceStatus, setPracticeStatus] = useState('')
 
-  const quizQuestion = weeklyQuiz[quizIndex]
+  const quizQuestions = useMemo(() => createVocabularyQuiz(vocabulary), [vocabulary])
+  const quizQuestion = quizQuestions[quizIndex]
   const progressByWord = useMemo(() => new Map(wordProgress.map((item) => [item.wordId, item])), [wordProgress])
 
   const averageMastery = useMemo(() => {
@@ -98,7 +95,7 @@ export function ChildDashboard({
     setQuizSaving(true)
     setQuizStatus('')
     try {
-      await onSaveQuizResult(finalScore, weeklyQuiz.length)
+      await onSaveQuizResult(finalScore, quizQuestions.length)
       setQuizStatus('Quiz result saved to your progress!')
     } catch (error) {
       setQuizStatus(error instanceof Error ? error.message : 'Could not save the quiz result.')
@@ -117,7 +114,7 @@ export function ChildDashboard({
     if (!selectedChoice || quizFinished) return
     const nextScore = score + Number(selectedChoice === quizQuestion.answer)
 
-    if (quizIndex < weeklyQuiz.length - 1) {
+    if (quizIndex < quizQuestions.length - 1) {
       setScore(nextScore)
       setQuizIndex((current) => current + 1)
       setSelectedChoice(null)
@@ -162,18 +159,13 @@ export function ChildDashboard({
     setAddWordError('')
     setAddWordMessage('')
 
-    if (!canAddWords) {
-      setAddWordError('A parent needs to sign in on this device before a new word can be saved.')
-      return
-    }
-
     setAddingWord(true)
     try {
       const saved = await onAddVocabulary({
         ...newWord,
         english: newWord.english.trim(),
         arabic: newWord.arabic.trim(),
-        example: newWord.example.trim(),
+        example: '',
       })
       setNewWord(createChildWord())
       setShowAddWord(false)
@@ -214,7 +206,7 @@ export function ChildDashboard({
               <form onSubmit={(event) => void handleAddWord(event)} className="rounded-3xl border border-indigo-100 bg-white p-5 shadow-sm sm:p-6">
                 <div className="mb-4">
                   <h4 className="text-lg font-bold text-slate-800">What new word did you learn?</h4>
-                  <p className="mt-1 text-sm text-slate-500">Add the English word and its Arabic meaning.</p>
+                  <p className="mt-1 text-sm text-slate-500">Just add the English word and its Arabic meaning. You can practice it in a quiz later.</p>
                 </div>
                 <div className="grid gap-4 sm:grid-cols-2">
                   <label className="text-sm font-semibold text-slate-700">
@@ -240,42 +232,18 @@ export function ChildDashboard({
                       className="mt-1.5 min-h-12 w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 text-base outline-none focus:border-indigo-400 focus:bg-white"
                     />
                   </label>
-                  <label className="text-sm font-semibold text-slate-700 sm:col-span-2">
-                    Example sentence <span className="font-normal text-slate-400">(optional)</span>
-                    <input
-                      maxLength={300}
-                      value={newWord.example}
-                      onChange={(event) => setNewWord((current) => ({ ...current, example: event.target.value }))}
-                      placeholder="A butterfly landed on the flower."
-                      className="mt-1.5 min-h-12 w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 text-base outline-none focus:border-indigo-400 focus:bg-white"
-                    />
-                  </label>
                 </div>
                 {addWordError ? (
                   <div className="mt-4 rounded-2xl bg-amber-50 p-4 text-sm text-amber-900">
                     <p role="alert">{addWordError}</p>
-                    {!canAddWords ? (
-                      <button
-                        type="button"
-                        onClick={onRequestParentSignIn}
-                        className="mt-3 min-h-10 rounded-xl bg-white px-3 font-bold text-indigo-700 shadow-sm"
-                      >
-                        Ask a parent to sign in
-                      </button>
-                    ) : null}
                   </div>
-                ) : null}
-                {!canAddWords ? (
-                  <p className="mt-4 rounded-2xl bg-sky-50 p-3 text-sm text-sky-800">
-                    A parent needs to sign in on this device before words can be saved.
-                  </p>
                 ) : null}
                 <button
                   type="submit"
                   disabled={addingWord}
                   className="mt-5 min-h-12 rounded-2xl bg-gradient-to-r from-sky-500 to-indigo-600 px-5 text-sm font-bold text-white shadow-lg shadow-sky-200 disabled:cursor-not-allowed disabled:opacity-50"
                 >
-                  {addingWord ? 'Adding word…' : canAddWords ? 'Add to My Words' : 'Continue to parent sign-in'}
+                  {addingWord ? 'Adding word…' : 'Add to My Words'}
                 </button>
               </form>
             ) : null}
@@ -388,15 +356,21 @@ export function ChildDashboard({
             <div className="mb-5 flex items-center justify-between">
               <div>
                 <p className="text-sm uppercase tracking-[0.2em] text-slate-500">Weekly Quiz</p>
-                <h3 className="mt-2 text-2xl font-black text-slate-800">{quizFinished ? 'Quiz complete!' : `Question ${quizIndex + 1}`}</h3>
+                <h3 className="mt-2 text-2xl font-black text-slate-800">{quizFinished ? 'Quiz complete!' : quizQuestions.length ? `Question ${quizIndex + 1} of ${quizQuestions.length}` : 'No words to quiz yet'}</h3>
               </div>
-              <span className="rounded-full bg-amber-100 px-3 py-1 text-sm font-bold text-amber-700">Score: {score}/{weeklyQuiz.length}</span>
+              {quizQuestions.length ? (
+                <span className="rounded-full bg-amber-100 px-3 py-1 text-sm font-bold text-amber-700">Score: {score}/{quizQuestions.length}</span>
+              ) : null}
             </div>
 
-            {quizFinished ? (
+            {!quizQuestions.length ? (
+              <p className="rounded-2xl bg-sky-50 p-4 text-sm text-sky-800">
+                Add a few words in My Words first. The latest words you add will be included in future quizzes.
+              </p>
+            ) : quizFinished ? (
               <div className="rounded-2xl bg-emerald-50 p-5">
                 <p className="text-lg font-bold text-emerald-900">
-                  You got {score} out of {weeklyQuiz.length} correct!
+                  You got {score} out of {quizQuestions.length} correct!
                 </p>
                 <p role="status" className="mt-2 text-sm text-emerald-800">{quizStatus}</p>
                 {!canSaveProgress ? (
@@ -456,7 +430,7 @@ export function ChildDashboard({
                       disabled={quizSaving}
                       className="min-h-11 rounded-xl bg-indigo-600 px-5 text-sm font-bold text-white disabled:opacity-60"
                     >
-                      {quizSaving ? 'Saving…' : quizIndex === weeklyQuiz.length - 1 ? 'Finish quiz' : 'Next question'}
+                      {quizSaving ? 'Saving…' : quizIndex === quizQuestions.length - 1 ? 'Finish quiz' : 'Next question'}
                     </button>
                   </>
                 ) : null}

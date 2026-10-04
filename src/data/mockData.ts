@@ -121,33 +121,36 @@ export const achievements: Achievement[] = [
   { id: 'perfect-speller', title: 'Perfect Speller', description: 'Get 100% spelling score', unlocked: false, icon: '✨' },
 ]
 
-export const weeklyQuiz: QuizQuestion[] = [
-  {
-    id: 'q1',
-    prompt: 'What is the Arabic meaning of “garden”?',
-    choices: ['حديقة', 'مكتبة', 'غابة', 'مدينة'],
-    answer: 'حديقة',
-    explanation: 'A garden is a place where flowers and plants grow.',
-  },
-  {
-    id: 'q2',
-    prompt: 'Which word means “شجاع”?',
-    choices: ['brave', 'happy', 'slow', 'quiet'],
-    answer: 'brave',
-    explanation: 'Brave means not feeling afraid.',
-  },
-  {
-    id: 'q3',
-    prompt: 'Choose the correct sentence:',
-    choices: ['I go to the library to read books.', 'I go to the river to cook dinner.', 'I go to the market to sleep.', 'I go to the school to fly.'],
-    answer: 'I go to the library to read books.',
-    explanation: 'A library is a place for reading and learning.',
-  },
-  {
-    id: 'q4',
-    prompt: 'What is the English word for “علوم”?',
-    choices: ['science', 'music', 'story', 'holiday'],
-    answer: 'science',
-    explanation: 'Science is the study of how the world works.',
-  },
-]
+export function createVocabularyQuiz(vocabulary: VocabularyItem[]): QuizQuestion[] {
+  const candidates = vocabulary.slice(0, 10)
+  if (!candidates.length) return []
+
+  const fallbackMeanings = initialVocabulary.map((item) => item.arabic)
+
+  return candidates.map((item) => {
+    const distractors = [...new Set([
+      ...candidates.filter((candidate) => candidate.id !== item.id).map((candidate) => candidate.arabic),
+      ...fallbackMeanings,
+    ])].filter((meaning) => meaning !== item.arabic).slice(0, 3)
+
+    const choices = [item.arabic, ...distractors]
+    for (const meaning of fallbackMeanings) {
+      if (choices.length === 4) break
+      if (!choices.includes(meaning)) choices.push(meaning)
+    }
+    for (let index = choices.length - 1; index > 0; index -= 1) {
+      const swapIndex = Math.floor(Math.random() * (index + 1))
+      const currentChoice = choices[index]
+      choices[index] = choices[swapIndex]
+      choices[swapIndex] = currentChoice
+    }
+
+    return {
+      id: item.id,
+      prompt: `What is the Arabic meaning of “${item.english}”?`,
+      choices,
+      answer: item.arabic,
+      explanation: item.example || `${item.english} means ${item.arabic}.`,
+    }
+  })
+}
