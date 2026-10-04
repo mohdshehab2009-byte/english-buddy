@@ -3,8 +3,8 @@ import type { Achievement, ChildProfile, ProgressStat, QuizQuestion, VocabularyI
 export const childProfile: ChildProfile = {
   name: 'Mujtaba',
   avatar: '🧒',
-  streak: 9,
-  points: 1260,
+  streak: 0,
+  points: 0,
   level: 'Explorer',
 }
 

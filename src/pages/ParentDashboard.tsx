@@ -410,8 +410,8 @@ export function ParentDashboard({
                   </div>
                 </div>
                 <div className="mt-4 space-y-2 text-sm text-slate-600">
-                  <p>🔥 9-day streak</p>
-                  <p>⭐ 1,260 points earned</p>
+                  <p>🔥 0-day streak</p>
+                  <p>⭐ 0 points earned</p>
                   <p>📘 3 achievements unlocked</p>
                 </div>
               </div>

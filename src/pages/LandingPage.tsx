@@ -87,11 +87,11 @@ export function LandingPage({ onStart }: LandingPageProps) {
           <div className="relative mx-auto w-full max-w-lg">
             <div className="absolute -left-5 top-12 z-10 hidden -rotate-6 rounded-2xl border border-white bg-white px-4 py-3 shadow-xl sm:block">
               <span className="text-xl">🔥</span>
-              <span className="ml-2 text-sm font-extrabold text-slate-800">9 day streak!</span>
+              <span className="ml-2 text-sm font-extrabold text-slate-800">Start your streak!</span>
             </div>
             <div className="absolute -right-4 bottom-16 z-10 hidden rotate-3 rounded-2xl border border-white bg-white px-4 py-3 shadow-xl sm:block">
               <span className="text-xl">⭐</span>
-              <span className="ml-2 text-sm font-extrabold text-slate-800">You earned 20 points</span>
+              <span className="ml-2 text-sm font-extrabold text-slate-800">Earn your first points</span>
             </div>
 
             <div className="rounded-[32px] border border-white bg-white/75 p-4 shadow-2xl shadow-indigo-200/70 backdrop-blur">
