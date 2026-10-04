@@ -2,8 +2,8 @@ import { initialVocabulary } from '../data/mockData'
 import type { VocabularyItem } from '../types'
 import { isSupabaseConfigured, supabase } from './supabase'
 
-const mapRow = (row: Record<string, unknown>): VocabularyItem => ({
-  id: String(row.id ?? row.english ?? Math.random().toString(36).slice(2)),
+const mapRow = (row: Record<string, unknown>, canEdit = false): VocabularyItem => ({
+  id: String(row.id),
   english: String(row.english ?? ''),
   arabic: String(row.arabic ?? ''),
   example: String(row.example_sentence ?? row.example ?? ''),
@@ -13,30 +13,35 @@ const mapRow = (row: Record<string, unknown>): VocabularyItem => ({
   difficulty: (String(row.difficulty ?? 'Easy') as VocabularyItem['difficulty']),
   category: String(row.category ?? 'General'),
   image: typeof row.image === 'string' ? row.image : '📖',
+  canEdit,
 })
 
-export async function loadVocabulary(): Promise<VocabularyItem[]> {
+export async function loadVocabulary(userId?: string): Promise<VocabularyItem[]> {
   if (!isSupabaseConfigured || !supabase) {
     return initialVocabulary
   }
 
-  const { data, error } = await supabase.from('vocabulary').select('*').order('created_at', { ascending: false })
+  const fields = 'id,english,arabic,example_sentence,pronunciation,unit,week,difficulty,category,image'
+  const [vocabularyResult, ownedResult] = await Promise.all([
+    supabase.from('vocabulary').select(fields).order('created_at', { ascending: false }),
+    userId ? supabase.from('vocabulary').select('id').eq('owner_id', userId) : Promise.resolve({ data: [], error: null }),
+  ])
 
-  if (error) {
-    console.error('Vocabulary fetch error:', error)
-    return initialVocabulary
+  if (vocabularyResult.error) {
+    throw new Error(`Could not load vocabulary: ${vocabularyResult.error.message}`)
   }
 
-  if (!data || !data.length) {
-    return initialVocabulary
+  if (ownedResult.error) {
+    throw new Error(`Could not load your editable vocabulary: ${ownedResult.error.message}`)
   }
 
-  return data.map(mapRow)
+  const ownedIds = new Set((ownedResult.data ?? []).map((row) => row.id))
+  return (vocabularyResult.data ?? []).map((row) => mapRow(row, ownedIds.has(row.id)))
 }
 
 export async function addVocabularyItem(item: VocabularyItem): Promise<VocabularyItem> {
   if (!isSupabaseConfigured || !supabase) {
-    return item
+    throw new Error('Supabase is not configured. Cannot save vocabulary.')
   }
 
   const { data, error } = await supabase
@@ -56,16 +61,15 @@ export async function addVocabularyItem(item: VocabularyItem): Promise<Vocabular
     .single()
 
   if (error) {
-    console.error('Vocabulary insert error:', error)
-    return item
+    throw new Error(`Could not add vocabulary: ${error.message}`)
   }
 
-  return mapRow(data)
+  return mapRow(data, true)
 }
 
 export async function updateVocabularyItem(id: string, item: VocabularyItem): Promise<VocabularyItem> {
   if (!isSupabaseConfigured || !supabase) {
-    return item
+    throw new Error('Supabase is not configured. Cannot save vocabulary.')
   }
 
   const { data, error } = await supabase
@@ -86,21 +90,20 @@ export async function updateVocabularyItem(id: string, item: VocabularyItem): Pr
     .single()
 
   if (error) {
-    console.error('Vocabulary update error:', error)
-    return item
+    throw new Error(`Could not update vocabulary: ${error.message}`)
   }
 
-  return mapRow(data)
+  return mapRow(data, true)
 }
 
 export async function deleteVocabularyItem(id: string): Promise<void> {
   if (!isSupabaseConfigured || !supabase) {
-    return
+    throw new Error('Supabase is not configured. Cannot delete vocabulary.')
   }
 
-  const { error } = await supabase.from('vocabulary').delete().eq('id', id)
+  const { error } = await supabase.from('vocabulary').delete().eq('id', id).select('id').single()
 
   if (error) {
-    console.error('Vocabulary delete error:', error)
+    throw new Error(`Could not delete vocabulary: ${error.message}`)
   }
 }

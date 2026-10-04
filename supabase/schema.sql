@@ -1,51 +1,191 @@
 create table if not exists profiles (
   id uuid primary key default gen_random_uuid(),
+  parent_id uuid references auth.users(id) on delete cascade,
   name text not null,
   avatar text,
   grade text,
-  created_at timestamptz default now()
+  created_at timestamptz not null default now()
 );
+
+alter table profiles
+  add column if not exists parent_id uuid references auth.users(id) on delete cascade;
+
+alter table profiles
+  alter column parent_id set default auth.uid();
 
 create table if not exists vocabulary (
   id uuid primary key default gen_random_uuid(),
+  owner_id uuid references auth.users(id) on delete set null,
   english text not null,
   arabic text not null,
   example_sentence text,
   pronunciation text,
   unit text,
   week text,
-  difficulty text default 'Easy',
+  difficulty text not null default 'Easy',
   category text,
   image text,
-  created_at timestamptz default now()
+  created_at timestamptz not null default now()
 );
+
+alter table vocabulary
+  add column if not exists owner_id uuid references auth.users(id) on delete set null;
+
+alter table vocabulary
+  alter column owner_id set default auth.uid();
 
 create table if not exists progress (
   id uuid primary key default gen_random_uuid(),
-  profile_id uuid references profiles(id) on delete cascade,
-  word_id uuid references vocabulary(id) on delete cascade,
-  mastery integer default 0,
-  spelling_score integer default 0,
-  translation_score integer default 0,
-  last_reviewed timestamptz default now()
+  profile_id uuid not null references profiles(id) on delete cascade,
+  word_id uuid not null references vocabulary(id) on delete cascade,
+  mastery integer not null default 0,
+  spelling_score integer not null default 0,
+  translation_score integer not null default 0,
+  last_reviewed timestamptz not null default now()
 );
 
 create table if not exists quiz_results (
   id uuid primary key default gen_random_uuid(),
-  profile_id uuid references profiles(id) on delete cascade,
+  profile_id uuid not null references profiles(id) on delete cascade,
   score integer not null,
   total_questions integer not null,
-  completed_at timestamptz default now()
+  completed_at timestamptz not null default now()
 );
 
 create table if not exists achievements (
   id uuid primary key default gen_random_uuid(),
-  profile_id uuid references profiles(id) on delete cascade,
+  profile_id uuid not null references profiles(id) on delete cascade,
   title text not null,
-  unlocked boolean default false,
+  unlocked boolean not null default false,
   unlocked_at timestamptz
 );
 
 create index if not exists idx_vocabulary_unit on vocabulary(unit);
+create index if not exists idx_vocabulary_owner on vocabulary(owner_id);
+create index if not exists idx_profiles_parent on profiles(parent_id);
 create index if not exists idx_progress_profile on progress(profile_id);
 create index if not exists idx_quiz_profile on quiz_results(profile_id);
+create index if not exists idx_achievements_profile on achievements(profile_id);
+
+alter table profiles enable row level security;
+alter table vocabulary enable row level security;
+alter table progress enable row level security;
+alter table quiz_results enable row level security;
+alter table achievements enable row level security;
+
+revoke all on table profiles, vocabulary, progress, quiz_results, achievements from anon;
+revoke all on table profiles, vocabulary, progress, quiz_results, achievements from authenticated;
+
+grant select (id, english, arabic, example_sentence, pronunciation, unit, week, difficulty, category, image, created_at)
+  on table vocabulary to anon;
+grant select, insert, update, delete on table vocabulary to authenticated;
+grant select, insert, update, delete on table profiles, progress, quiz_results, achievements to authenticated;
+
+drop policy if exists "Anyone can read vocabulary" on vocabulary;
+drop policy if exists "Parents can add owned vocabulary" on vocabulary;
+drop policy if exists "Parents can update owned vocabulary" on vocabulary;
+drop policy if exists "Parents can delete owned vocabulary" on vocabulary;
+
+create policy "Anyone can read vocabulary"
+  on vocabulary for select
+  to anon, authenticated
+  using (true);
+
+create policy "Parents can add owned vocabulary"
+  on vocabulary for insert
+  to authenticated
+  with check (owner_id = (select auth.uid()));
+
+create policy "Parents can update owned vocabulary"
+  on vocabulary for update
+  to authenticated
+  using (owner_id = (select auth.uid()))
+  with check (owner_id = (select auth.uid()));
+
+create policy "Parents can delete owned vocabulary"
+  on vocabulary for delete
+  to authenticated
+  using (owner_id = (select auth.uid()));
+
+drop policy if exists "Parents can manage own profiles" on profiles;
+create policy "Parents can manage own profiles"
+  on profiles for all
+  to authenticated
+  using (parent_id = (select auth.uid()))
+  with check (parent_id = (select auth.uid()));
+
+drop policy if exists "Parents can manage own child progress" on progress;
+create policy "Parents can manage own child progress"
+  on progress for all
+  to authenticated
+  using (
+    exists (
+      select 1 from profiles
+      where profiles.id = progress.profile_id
+        and profiles.parent_id = (select auth.uid())
+    )
+  )
+  with check (
+    exists (
+      select 1 from profiles
+      where profiles.id = progress.profile_id
+        and profiles.parent_id = (select auth.uid())
+    )
+  );
+
+drop policy if exists "Parents can manage own quiz results" on quiz_results;
+create policy "Parents can manage own quiz results"
+  on quiz_results for all
+  to authenticated
+  using (
+    exists (
+      select 1 from profiles
+      where profiles.id = quiz_results.profile_id
+        and profiles.parent_id = (select auth.uid())
+    )
+  )
+  with check (
+    exists (
+      select 1 from profiles
+      where profiles.id = quiz_results.profile_id
+        and profiles.parent_id = (select auth.uid())
+    )
+  );
+
+drop policy if exists "Parents can manage own achievements" on achievements;
+create policy "Parents can manage own achievements"
+  on achievements for all
+  to authenticated
+  using (
+    exists (
+      select 1 from profiles
+      where profiles.id = achievements.profile_id
+        and profiles.parent_id = (select auth.uid())
+    )
+  )
+  with check (
+    exists (
+      select 1 from profiles
+      where profiles.id = achievements.profile_id
+        and profiles.parent_id = (select auth.uid())
+    )
+  );
+
+insert into vocabulary (owner_id, english, arabic, example_sentence, pronunciation, unit, week, difficulty, category, image)
+select null, seed.english, seed.arabic, seed.example_sentence, seed.pronunciation, seed.unit, seed.week, seed.difficulty, seed.category, seed.image
+from (values
+  ('garden', 'حديقة', 'We played in the garden after school.', '/ˈɡɑːrdn/', 'Nature', 'Week 1', 'Easy', 'Places', '🌼'),
+  ('library', 'مكتبة', 'The library is full of interesting books.', '/ˈlaɪbreri/', 'School', 'Week 1', 'Easy', 'Places', '📚'),
+  ('brave', 'شجاع', 'He was brave and spoke in front of the class.', '/breɪv/', 'Character', 'Week 2', 'Medium', 'Feelings', '🦁'),
+  ('healthy', 'صحي', 'Eating fruit keeps us healthy.', '/ˈhɛlθi/', 'Health', 'Week 2', 'Medium', 'Body', '🥗'),
+  ('friendship', 'صداقة', 'Friendship is an important part of school life.', '/ˈfrendʃɪp/', 'Relationships', 'Week 3', 'Medium', 'People', '🤝'),
+  ('science', 'علوم', 'Science helps us learn how the world works.', '/ˈsaɪəns/', 'School', 'Week 3', 'Medium', 'Subjects', '🔬'),
+  ('forest', 'غابة', 'The fox hid in the forest.', '/ˈfɒrɪst/', 'Nature', 'Week 4', 'Hard', 'Places', '🌲'),
+  ('practice', 'ممارسة', 'You need practice to improve your spelling.', '/ˈpræktɪs/', 'Learning', 'Week 4', 'Hard', 'Skills', '🎯')
+) as seed(english, arabic, example_sentence, pronunciation, unit, week, difficulty, category, image)
+where not exists (
+  select 1
+  from vocabulary existing
+  where existing.owner_id is null
+    and existing.english = seed.english
+);

@@ -6,9 +6,10 @@ import type { VocabularyItem } from '../types'
 
 interface ParentDashboardProps {
   vocabulary: VocabularyItem[]
-  onAddWord: (item: VocabularyItem) => void
-  onDeleteWord: (id: string) => void
-  onUpdateWord: (id: string, item: VocabularyItem) => void
+  onAddWord: (item: VocabularyItem) => Promise<void>
+  onDeleteWord: (id: string) => Promise<void>
+  onUpdateWord: (id: string, item: VocabularyItem) => Promise<void>
+  canManageAllWords?: boolean
 }
 
 const createEmptyWord = (): VocabularyItem => ({
@@ -34,10 +35,12 @@ const parentNav = [
   { label: 'Settings', value: 'settings', icon: '⚙️' },
 ]
 
-export function ParentDashboard({ vocabulary, onAddWord, onDeleteWord, onUpdateWord }: ParentDashboardProps) {
+export function ParentDashboard({ vocabulary, onAddWord, onDeleteWord, onUpdateWord, canManageAllWords = false }: ParentDashboardProps) {
   const [page, setPage] = useState('dashboard')
   const [draft, setDraft] = useState<VocabularyItem>(createEmptyWord())
   const [editingId, setEditingId] = useState<string | null>(null)
+  const [mutationError, setMutationError] = useState('')
+  const [saving, setSaving] = useState(false)
 
   const unitSummary = useMemo(
     () =>
@@ -45,27 +48,43 @@ export function ParentDashboard({ vocabulary, onAddWord, onDeleteWord, onUpdateW
     [],
   )
 
-  const handleSubmit = (event: React.FormEvent) => {
+  const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault()
 
     if (!draft.english.trim() || !draft.arabic.trim()) {
       return
     }
 
+    setSaving(true)
+    setMutationError('')
     const normalized = {
       ...draft,
       id: draft.id || `${draft.english.toLowerCase().replace(/\s+/g, '-')}-${Date.now()}`,
     }
 
-    if (editingId) {
-      onUpdateWord(editingId, normalized)
-    } else {
-      onAddWord(normalized)
+    try {
+      if (editingId) {
+        await onUpdateWord(editingId, normalized)
+      } else {
+        await onAddWord(normalized)
+      }
+      setDraft(createEmptyWord())
+      setEditingId(null)
+      setPage('vocabulary')
+    } catch (error) {
+      setMutationError(error instanceof Error ? error.message : 'Could not save this word.')
+    } finally {
+      setSaving(false)
     }
+  }
 
-    setDraft(createEmptyWord())
-    setEditingId(null)
-    setPage('vocabulary')
+  const handleDelete = async (id: string) => {
+    setMutationError('')
+    try {
+      await onDeleteWord(id)
+    } catch (error) {
+      setMutationError(error instanceof Error ? error.message : 'Could not delete this word.')
+    }
   }
 
   const handleEdit = (id: string) => {
@@ -112,6 +131,7 @@ export function ParentDashboard({ vocabulary, onAddWord, onDeleteWord, onUpdateW
                 <label className="text-sm font-medium text-slate-600">
                   English
                   <input
+                    required
                     value={draft.english}
                     onChange={(event) => setDraft((current) => ({ ...current, english: event.target.value }))}
                     className="mt-1 w-full rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm outline-none ring-0 transition focus:border-sky-400 focus:bg-white"
@@ -121,6 +141,7 @@ export function ParentDashboard({ vocabulary, onAddWord, onDeleteWord, onUpdateW
                 <label className="text-sm font-medium text-slate-600">
                   Arabic
                   <input
+                    required
                     value={draft.arabic}
                     onChange={(event) => setDraft((current) => ({ ...current, arabic: event.target.value }))}
                     className="mt-1 w-full rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm outline-none ring-0 transition focus:border-sky-400 focus:bg-white"
@@ -175,11 +196,16 @@ export function ParentDashboard({ vocabulary, onAddWord, onDeleteWord, onUpdateW
                 </label>
               </div>
 
+              {mutationError ? (
+                <p role="alert" className="mt-4 rounded-2xl bg-rose-50 p-3 text-sm text-rose-700">{mutationError}</p>
+              ) : null}
+
               <button
                 type="submit"
-                className="mt-5 inline-flex items-center justify-center rounded-2xl bg-gradient-to-r from-sky-500 to-indigo-500 px-4 py-3 text-sm font-bold text-white shadow-lg shadow-sky-300/40 transition hover:translate-y-[-1px]"
+                disabled={saving}
+                className="mt-5 inline-flex min-h-11 items-center justify-center rounded-2xl bg-gradient-to-r from-sky-500 to-indigo-500 px-4 py-3 text-sm font-bold text-white shadow-lg shadow-sky-300/40 transition hover:translate-y-[-1px] disabled:cursor-wait disabled:opacity-60"
               >
-                {editingId ? 'Save changes' : 'Add word'}
+                {saving ? 'Saving…' : editingId ? 'Save changes' : 'Add word'}
               </button>
             </form>
 
@@ -188,9 +214,20 @@ export function ParentDashboard({ vocabulary, onAddWord, onDeleteWord, onUpdateW
                 <h3 className="text-xl font-bold text-slate-800">Vocabulary library</h3>
                 <span className="rounded-full bg-sky-100 px-3 py-1 text-xs font-bold text-sky-700">{vocabulary.length} words</span>
               </div>
+              {!canManageAllWords && vocabulary.some((item) => !item.canEdit) ? (
+                <p className="rounded-2xl bg-slate-100 px-4 py-3 text-sm text-slate-600">
+                  Shared vocabulary is read-only. You can edit or delete words that you add with this account.
+                </p>
+              ) : null}
               <div className="grid gap-4 md:grid-cols-2">
                 {vocabulary.map((item) => (
-                  <WordCard key={item.id} item={item} onEdit={handleEdit} onDelete={onDeleteWord} compact={false} />
+                  <WordCard
+                    key={item.id}
+                    item={item}
+                    onEdit={canManageAllWords || item.canEdit ? handleEdit : undefined}
+                    onDelete={canManageAllWords || item.canEdit ? handleDelete : undefined}
+                    compact={false}
+                  />
                 ))}
               </div>
             </div>

@@ -10,44 +10,42 @@ English Buddy is a lightweight English-learning app for children, built with Rea
 - Practice tasks for listening, spelling, and translation
 - Weekly quiz and progress tracking
 - Achievement badges and points
-- Supabase-ready hooks and schema for future database integration
+- Supabase vocabulary reads and parent-authenticated vocabulary management
 
 ## Local development
 
-1. Install dependencies:
-   npm install
-2. Copy the environment file:
-   cp .env.example .env
-3. Add your Supabase values:
-   - VITE_SUPABASE_URL
-   - VITE_SUPABASE_ANON_KEY
-4. Start the app:
-   npm run dev
+1. Install dependencies with `npm install`.
+2. Copy `.env.example` to `.env` in PowerShell with `Copy-Item .env.example .env`.
+3. Set `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` in `.env` using the project URL and publishable/anon key from Supabase.
+4. Run `npm run dev`.
 
-## Single required Supabase configuration step
-
-Create a project in Supabase and add the generated URL and anon key to a local `.env` file based on `.env.example`.
-
-The app is intentionally designed to work with sample data immediately when Supabase is not configured yet, so the interface can be used and reviewed without a live database connection.
+The app uses sample words in demo mode when the environment variables are not set. If values are present but incorrect, database errors appear in the app rather than being silently replaced with sample data.
 
 ## Supabase schema
 
-The SQL schema is available in `supabase/schema.sql`.
+1. In the Supabase dashboard, open **SQL Editor**.
+2. Run the SQL in `supabase/schema.sql`. It creates the tables, seeds the starter vocabulary, enables Row Level Security, and installs the access policies.
+3. In **Authentication → URL Configuration**, set the Site URL to `https://mohdshehab2009-byte.github.io/english-buddy/` and allow that URL as a redirect URL. Add the local development URL too if you test sign-up locally.
+4. Open the app, choose **Parent view**, and create/sign in to a parent account. Confirm the email if Supabase asks.
+
+Vocabulary is readable without signing in. Only authenticated users can add vocabulary; each parent can edit or delete only words owned by that account. Profiles, progress, quiz results, and achievements are restricted to the owning parent by RLS.
 
 ## Production build
 
-npm run build
+Run `npm run build`.
 
 ## GitHub Pages deployment
 
-The configured site URL is:
-`https://mohdshehab2009-byte.github.io/english-buddy/`
+The configured site URL is `https://mohdshehab2009-byte.github.io/english-buddy/`.
 
-Push changes to `main` to trigger the GitHub Actions workflow. It builds the app and publishes the `dist` directory to the `gh-pages` branch. In the repository's **Settings → Pages**, select **Deploy from a branch**, then choose `gh-pages` and `/(root)` if Pages is not already configured.
+To deploy the Supabase-connected build:
 
-The workflow intentionally does not use local `.env` values, so the published site runs in demo mode. Do not commit `.env` or add Supabase keys to source code. To publish live data, first implement parent authentication and database Row Level Security, then configure suitable GitHub Actions secrets and inject them at build time.
+1. In the GitHub repository, open **Settings → Secrets and variables → Actions → New repository secret**.
+2. Add `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` using the project URL and publishable/anon key from Supabase.
+3. Push to `main`, or select **Actions → Deploy to GitHub Pages → Run workflow**. The workflow requires both values and stops with an error if either is missing.
+4. In **Settings → Pages**, choose **Deploy from a branch**, then branch `gh-pages` and folder `/(root)` if this is not already selected.
 
-You can also publish manually with `npm run deploy` after authenticating Git with GitHub.
+The anon/publishable key is embedded in the client bundle and is not a secret. The database must be protected by the RLS policies in `supabase/schema.sql`. Never use or publish a Supabase service-role key. Local `.env` files are ignored by Git.
 
 ### Automatic GitHub Actions deployment
 

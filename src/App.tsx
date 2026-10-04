@@ -1,29 +1,78 @@
 import { useEffect, useState } from 'react'
+import type { Session } from '@supabase/supabase-js'
+import { ParentAuth } from './components/ParentAuth'
 import { ChildDashboard } from './pages/ChildDashboard'
 import { LandingPage } from './pages/LandingPage'
 import { ParentDashboard } from './pages/ParentDashboard'
 import { addVocabularyItem, deleteVocabularyItem, loadVocabulary, updateVocabularyItem } from './lib/data'
-import { isSupabaseConfigured } from './lib/supabase'
+import { isSupabaseConfigured, supabase } from './lib/supabase'
 import type { Role, VocabularyItem } from './types'
 
 function App() {
   const [showLanding, setShowLanding] = useState(true)
   const [role, setRole] = useState<Role>('child')
   const [vocabulary, setVocabulary] = useState<VocabularyItem[]>([])
+  const [session, setSession] = useState<Session | null>(null)
+  const [authReady, setAuthReady] = useState(!isSupabaseConfigured)
+  const [authError, setAuthError] = useState('')
+  const [loadError, setLoadError] = useState('')
+  const [reloadCount, setReloadCount] = useState(0)
+  const [isLoading, setIsLoading] = useState(true)
+
+  useEffect(() => {
+    if (!supabase) return
+
+    let active = true
+    let receivedAuthEvent = false
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, nextSession) => {
+      receivedAuthEvent = true
+      setSession(nextSession)
+      setAuthReady(true)
+      setIsLoading(true)
+      setAuthError('')
+    })
+
+    void supabase.auth.getSession().then(({ data, error }) => {
+      if (!active || receivedAuthEvent) return
+      if (error) {
+        setAuthError(`Could not restore your parent session: ${error.message}`)
+      } else {
+        setSession(data.session)
+      }
+      setAuthReady(true)
+    }).catch((error: unknown) => {
+      if (!active || receivedAuthEvent) return
+      setAuthError(error instanceof Error ? error.message : 'Could not restore your parent session.')
+      setAuthReady(true)
+    })
+
+    return () => {
+      active = false
+      subscription.unsubscribe()
+    }
+  }, [])
 
   useEffect(() => {
     let active = true
 
-    loadVocabulary().then((items) => {
-      if (active) {
-        setVocabulary(items)
-      }
+    if (!authReady) return
+
+    void loadVocabulary(session?.user.id).then((items) => {
+      if (!active) return
+      setLoadError('')
+      setVocabulary(items)
+    }).catch((error: unknown) => {
+      if (!active) return
+      setVocabulary([])
+      setLoadError(error instanceof Error ? error.message : 'Could not load vocabulary.')
+    }).finally(() => {
+      if (active) setIsLoading(false)
     })
 
     return () => {
       active = false
     }
-  }, [])
+  }, [authReady, reloadCount, session?.user.id])
 
   const handleAddWord = async (item: VocabularyItem) => {
     const saved = await addVocabularyItem(item)
@@ -38,6 +87,16 @@ function App() {
   const handleUpdateWord = async (id: string, item: VocabularyItem) => {
     const saved = await updateVocabularyItem(id, item)
     setVocabulary((current) => current.map((entry) => (entry.id === id ? saved : entry)))
+  }
+
+  const handleSignOut = async () => {
+    if (!supabase) return
+    try {
+      const { error } = await supabase.auth.signOut()
+      if (error) setAuthError(`Could not sign out: ${error.message}`)
+    } catch (error) {
+      setAuthError(error instanceof Error ? error.message : 'Could not sign out.')
+    }
   }
 
   if (showLanding) {
@@ -87,9 +146,23 @@ function App() {
               </div>
 
               {isSupabaseConfigured ? (
-                <span className="rounded-full bg-emerald-100 px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.2em] text-emerald-700">
-                  Live data
-                </span>
+                <>
+                  <span className="rounded-full bg-emerald-100 px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.2em] text-emerald-700">
+                    Supabase
+                  </span>
+                  {role === 'parent' && session?.user.email ? (
+                    <>
+                      <span className="hidden text-xs text-slate-500 sm:inline">{session.user.email}</span>
+                      <button
+                        type="button"
+                        onClick={() => void handleSignOut()}
+                        className="min-h-10 rounded-xl border border-slate-200 px-3 text-xs font-bold text-slate-600 hover:bg-slate-50"
+                      >
+                        Sign out
+                      </button>
+                    </>
+                  ) : null}
+                </>
               ) : (
                 <span className="rounded-full bg-amber-100 px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.2em] text-amber-700">
                   Demo mode
@@ -99,14 +172,46 @@ function App() {
           </div>
         </header>
 
+        {authError ? (
+          <p role="alert" className="mb-4 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-800">
+            {authError}
+          </p>
+        ) : null}
+
+        {loadError ? (
+          <div role="alert" className="mb-4 flex flex-col gap-3 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-800 sm:flex-row sm:items-center sm:justify-between">
+            <span>{loadError}</span>
+            <button
+              type="button"
+              onClick={() => {
+                setIsLoading(true)
+                setLoadError('')
+                setReloadCount((count) => count + 1)
+              }}
+              className="min-h-10 rounded-xl bg-white px-3 font-bold text-rose-700 shadow-sm"
+            >
+              Retry
+            </button>
+          </div>
+        ) : null}
+
         {role === 'child' ? (
-          <ChildDashboard vocabulary={vocabulary} />
+          isLoading ? (
+            <p role="status" className="rounded-2xl bg-white/80 p-5 text-sm font-semibold text-slate-600">Loading vocabulary…</p>
+          ) : (
+            <ChildDashboard vocabulary={vocabulary} />
+          )
+        ) : isSupabaseConfigured && !authReady ? (
+          <p role="status" className="rounded-2xl bg-white/80 p-5 text-sm font-semibold text-slate-600">Restoring parent session…</p>
+        ) : isSupabaseConfigured && !session ? (
+          <ParentAuth onAuthenticated={() => setAuthError('')} />
         ) : (
           <ParentDashboard
             vocabulary={vocabulary}
             onAddWord={handleAddWord}
             onDeleteWord={handleDeleteWord}
             onUpdateWord={handleUpdateWord}
+            canManageAllWords={!isSupabaseConfigured}
           />
         )}
       </div>

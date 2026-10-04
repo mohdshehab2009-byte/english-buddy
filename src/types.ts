@@ -13,6 +13,7 @@ export interface VocabularyItem {
   difficulty: WordDifficulty
   category: string
   image?: string
+  canEdit?: boolean
 }
 
 export interface ProgressStat {
