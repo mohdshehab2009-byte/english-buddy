@@ -5,12 +5,28 @@ import { WordCard } from '../components/WordCard'
 import { achievements, childProfile, weeklyQuiz } from '../data/mockData'
 import type { QuizResult, VocabularyItem, WordProgress } from '../types'
 
+const createChildWord = (): VocabularyItem => ({
+  id: '',
+  english: '',
+  arabic: '',
+  example: '',
+  pronunciation: '',
+  unit: 'My words',
+  week: 'This week',
+  difficulty: 'Easy',
+  category: 'Child added',
+  image: '🌟',
+})
+
 interface ChildDashboardProps {
   vocabulary: VocabularyItem[]
   profileId: string | null
   canSaveProgress: boolean
+  canAddWords: boolean
   wordProgress: WordProgress[]
   quizResults: QuizResult[]
+  onAddVocabulary: (item: VocabularyItem) => Promise<VocabularyItem>
+  onRequestParentSignIn: () => void
   onSaveWordPractice: (wordId: string, kind: 'spelling' | 'translation', score: number) => Promise<WordProgress>
   onSaveQuizResult: (score: number, totalQuestions: number) => Promise<QuizResult>
 }
@@ -36,13 +52,21 @@ export function ChildDashboard({
   vocabulary,
   profileId,
   canSaveProgress,
+  canAddWords,
   wordProgress,
   quizResults,
+  onAddVocabulary,
+  onRequestParentSignIn,
   onSaveWordPractice,
   onSaveQuizResult,
 }: ChildDashboardProps) {
   const [page, setPage] = useState('home')
   const [selectedWord, setSelectedWord] = useState(vocabulary[0] ?? null)
+  const [showAddWord, setShowAddWord] = useState(false)
+  const [newWord, setNewWord] = useState<VocabularyItem>(createChildWord())
+  const [addingWord, setAddingWord] = useState(false)
+  const [addWordError, setAddWordError] = useState('')
+  const [addWordMessage, setAddWordMessage] = useState('')
   const [score, setScore] = useState(0)
   const [quizIndex, setQuizIndex] = useState(0)
   const [selectedChoice, setSelectedChoice] = useState<string | null>(null)
@@ -133,21 +157,147 @@ export function ChildDashboard({
     setPracticeStatus('')
   }
 
+  const handleAddWord = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault()
+    setAddWordError('')
+    setAddWordMessage('')
+
+    if (!canAddWords) {
+      setAddWordError('A parent needs to sign in on this device before a new word can be saved.')
+      return
+    }
+
+    setAddingWord(true)
+    try {
+      const saved = await onAddVocabulary({
+        ...newWord,
+        english: newWord.english.trim(),
+        arabic: newWord.arabic.trim(),
+        example: newWord.example.trim(),
+      })
+      setNewWord(createChildWord())
+      setShowAddWord(false)
+      setAddWordMessage(`“${saved.english}” was added to My Words!`)
+    } catch (error) {
+      setAddWordError(error instanceof Error ? error.message : 'Could not add this word. Please try again.')
+    } finally {
+      setAddingWord(false)
+    }
+  }
+
   const renderPage = () => {
     switch (page) {
       case 'words':
         return (
-          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-            {vocabulary.map((item) => (
+          <div className="space-y-5">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <h3 className="text-2xl font-black text-slate-800">My Words</h3>
+                <p className="mt-1 text-sm text-slate-500">Add new words you discover and practice them here.</p>
+              </div>
               <button
-                key={item.id}
                 type="button"
-                onClick={() => setSelectedWord(item)}
-                className="text-left"
+                onClick={() => {
+                  setShowAddWord((current) => !current)
+                  setAddWordError('')
+                  setAddWordMessage('')
+                }}
+                className="min-h-12 rounded-2xl bg-indigo-600 px-5 text-sm font-bold text-white shadow-lg shadow-indigo-200 transition hover:bg-indigo-700"
               >
-                <WordCard item={item} compact />
+                {showAddWord ? 'Close form' : '+ Add a word'}
               </button>
-            ))}
+            </div>
+
+            {addWordMessage ? <p role="status" className="rounded-2xl bg-emerald-50 px-4 py-3 text-sm font-semibold text-emerald-800">{addWordMessage}</p> : null}
+
+            {showAddWord ? (
+              <form onSubmit={(event) => void handleAddWord(event)} className="rounded-3xl border border-indigo-100 bg-white p-5 shadow-sm sm:p-6">
+                <div className="mb-4">
+                  <h4 className="text-lg font-bold text-slate-800">What new word did you learn?</h4>
+                  <p className="mt-1 text-sm text-slate-500">Add the English word and its Arabic meaning.</p>
+                </div>
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <label className="text-sm font-semibold text-slate-700">
+                    English word
+                    <input
+                      required
+                      maxLength={100}
+                      value={newWord.english}
+                      onChange={(event) => setNewWord((current) => ({ ...current, english: event.target.value }))}
+                      placeholder="butterfly"
+                      className="mt-1.5 min-h-12 w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 text-base outline-none focus:border-indigo-400 focus:bg-white"
+                    />
+                  </label>
+                  <label className="text-sm font-semibold text-slate-700">
+                    Arabic meaning
+                    <input
+                      required
+                      maxLength={100}
+                      dir="rtl"
+                      value={newWord.arabic}
+                      onChange={(event) => setNewWord((current) => ({ ...current, arabic: event.target.value }))}
+                      placeholder="فراشة"
+                      className="mt-1.5 min-h-12 w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 text-base outline-none focus:border-indigo-400 focus:bg-white"
+                    />
+                  </label>
+                  <label className="text-sm font-semibold text-slate-700 sm:col-span-2">
+                    Example sentence <span className="font-normal text-slate-400">(optional)</span>
+                    <input
+                      maxLength={300}
+                      value={newWord.example}
+                      onChange={(event) => setNewWord((current) => ({ ...current, example: event.target.value }))}
+                      placeholder="A butterfly landed on the flower."
+                      className="mt-1.5 min-h-12 w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 text-base outline-none focus:border-indigo-400 focus:bg-white"
+                    />
+                  </label>
+                </div>
+                {addWordError ? (
+                  <div className="mt-4 rounded-2xl bg-amber-50 p-4 text-sm text-amber-900">
+                    <p role="alert">{addWordError}</p>
+                    {!canAddWords ? (
+                      <button
+                        type="button"
+                        onClick={onRequestParentSignIn}
+                        className="mt-3 min-h-10 rounded-xl bg-white px-3 font-bold text-indigo-700 shadow-sm"
+                      >
+                        Ask a parent to sign in
+                      </button>
+                    ) : null}
+                  </div>
+                ) : null}
+                {!canAddWords ? (
+                  <p className="mt-4 rounded-2xl bg-sky-50 p-3 text-sm text-sky-800">
+                    A parent needs to sign in on this device before words can be saved.
+                  </p>
+                ) : null}
+                <button
+                  type="submit"
+                  disabled={addingWord}
+                  className="mt-5 min-h-12 rounded-2xl bg-gradient-to-r from-sky-500 to-indigo-600 px-5 text-sm font-bold text-white shadow-lg shadow-sky-200 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  {addingWord ? 'Adding word…' : canAddWords ? 'Add to My Words' : 'Continue to parent sign-in'}
+                </button>
+              </form>
+            ) : null}
+
+            {vocabulary.length ? (
+              <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+                {vocabulary.map((item) => (
+                  <button
+                    key={item.id}
+                    type="button"
+                    onClick={() => setSelectedWord(item)}
+                    className="text-left"
+                  >
+                    <WordCard item={item} compact />
+                  </button>
+                ))}
+              </div>
+            ) : (
+              <p className="rounded-3xl border border-dashed border-slate-300 bg-white p-8 text-center text-slate-600">
+                Your word list is empty. Add your first word above!
+              </p>
+            )}
           </div>
         )
 

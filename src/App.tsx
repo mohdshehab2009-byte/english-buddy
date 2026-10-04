@@ -133,6 +133,7 @@ function App() {
   const handleAddWord = async (item: VocabularyItem) => {
     const saved = await addVocabularyItem(item)
     setVocabulary((current) => [saved, ...current.filter((entry) => entry.id !== item.id)])
+    return saved
   }
 
   const handleDeleteWord = async (id: string) => {
@@ -282,8 +283,11 @@ function App() {
               vocabulary={vocabulary}
               profileId={profileId}
               canSaveProgress={Boolean(profileId)}
+              canAddWords={Boolean(session?.user.id)}
               wordProgress={wordProgress}
               quizResults={quizResults}
+              onAddVocabulary={handleAddWord}
+              onRequestParentSignIn={() => setRole('parent')}
               onSaveWordPractice={handleSaveWordPractice}
               onSaveQuizResult={handleSaveQuizResult}
             />

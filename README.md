@@ -6,6 +6,7 @@ English Buddy is a lightweight English-learning app for children, built with Rea
 
 - Child-friendly learning dashboard with mobile-first navigation
 - Parent vocabulary management with add/edit/delete workflow
+- Child-friendly word suggestions added directly to the shared vocabulary when a parent is signed in on the device
 - Unit and week organization for learning content
 - Practice tasks for listening, spelling, and translation
 - Weekly quiz and progress tracking
@@ -29,6 +30,8 @@ The app uses sample words in demo mode when the environment variables are not se
 4. Open the app, choose **Parent view**, and create/sign in to a parent account. Confirm the email if Supabase asks.
 
 Vocabulary is readable without signing in. Only authenticated users can add vocabulary; each parent can edit or delete only words owned by that account. Profiles, progress, quiz results, and achievements are restricted to the owning parent by RLS. When a parent is signed in, quiz results and spelling/translation practice are saved to that parent's child profile. The child view can still be used signed out, but it will explain that those results are not saved.
+
+Children can add a word from **Child view → My Words** while a parent is signed in on the same device. The new word is immediately shared and owned by that parent account; children cannot edit or remove shared words.
 
 The app currently creates one child profile named Musa per parent account. Quiz results and best spelling/translation scores appear in the child's **Progress** view and the parent's **Child Progress** and **Reports** views.
 

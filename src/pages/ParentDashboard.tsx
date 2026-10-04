@@ -6,7 +6,7 @@ import type { QuizResult, VocabularyItem, WordProgress } from '../types'
 
 interface ParentDashboardProps {
   vocabulary: VocabularyItem[]
-  onAddWord: (item: VocabularyItem) => Promise<void>
+  onAddWord: (item: VocabularyItem) => Promise<unknown>
   onDeleteWord: (id: string) => Promise<void>
   onUpdateWord: (id: string, item: VocabularyItem) => Promise<void>
   canManageAllWords?: boolean
