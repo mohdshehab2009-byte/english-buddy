@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react'
 import { Sidebar } from '../components/Sidebar'
 import { StatCard } from '../components/StatCard'
 import { WordCard } from '../components/WordCard'
+import { translateEnglishToArabic } from '../lib/translation'
 import { achievements, childProfile, createVocabularyQuiz } from '../data/mockData'
 import type { QuizResult, VocabularyItem, WordProgress } from '../types'
 
@@ -19,8 +20,12 @@ const createChildWord = (): VocabularyItem => ({
 })
 
 interface ChildDashboardProps {
+  page: string
+  onNavigate: (page: string) => void
   vocabulary: VocabularyItem[]
   profileId: string | null
+  supabaseConfigured: boolean
+  isParentSignedIn: boolean
   canSaveProgress: boolean
   wordProgress: WordProgress[]
   quizResults: QuizResult[]
@@ -47,8 +52,12 @@ const normalizeAnswer = (value: string) =>
     .replace(/\s+/g, ' ')
 
 export function ChildDashboard({
+  page,
+  onNavigate,
   vocabulary,
   profileId,
+  supabaseConfigured,
+  isParentSignedIn,
   canSaveProgress,
   wordProgress,
   quizResults,
@@ -56,11 +65,12 @@ export function ChildDashboard({
   onSaveWordPractice,
   onSaveQuizResult,
 }: ChildDashboardProps) {
-  const [page, setPage] = useState('home')
   const [selectedWord, setSelectedWord] = useState(vocabulary[0] ?? null)
   const [showAddWord, setShowAddWord] = useState(false)
   const [newWord, setNewWord] = useState<VocabularyItem>(createChildWord())
   const [addingWord, setAddingWord] = useState(false)
+  const [translatingWord, setTranslatingWord] = useState(false)
+  const [translationError, setTranslationError] = useState('')
   const [addWordError, setAddWordError] = useState('')
   const [addWordMessage, setAddWordMessage] = useState('')
   const [score, setScore] = useState(0)
@@ -69,6 +79,7 @@ export function ChildDashboard({
   const [quizFinished, setQuizFinished] = useState(false)
   const [quizFinalScore, setQuizFinalScore] = useState<number | null>(null)
   const [quizSaving, setQuizSaving] = useState(false)
+  const [quizSaved, setQuizSaved] = useState(false)
   const [quizStatus, setQuizStatus] = useState('')
   const [practiceKind, setPracticeKind] = useState<'spelling' | 'translation' | null>(null)
   const [practiceAnswer, setPracticeAnswer] = useState('')
@@ -87,15 +98,23 @@ export function ChildDashboard({
   }, [wordProgress])
 
   const persistQuizResult = async (finalScore: number) => {
+    setQuizSaved(false)
     if (!canSaveProgress || !profileId) {
-      setQuizStatus('Quiz complete. Sign in as a parent on this device to save results.')
+      setQuizStatus(
+        !supabaseConfigured
+          ? 'Quiz complete. Supabase is not configured, so results cannot be saved in demo mode.'
+          : !isParentSignedIn
+            ? 'Quiz complete. Sign in as a parent on this device to save results.'
+            : 'Quiz complete. Your parent profile is still loading; retry saving in a moment.',
+      )
       return
     }
 
     setQuizSaving(true)
-    setQuizStatus('')
+    setQuizStatus('Saving quiz result…')
     try {
       await onSaveQuizResult(finalScore, quizQuestions.length)
+      setQuizSaved(true)
       setQuizStatus('Quiz result saved to your progress!')
     } catch (error) {
       setQuizStatus(error instanceof Error ? error.message : 'Could not save the quiz result.')
@@ -177,6 +196,19 @@ export function ChildDashboard({
     }
   }
 
+  const handleTranslateWord = async () => {
+    setTranslatingWord(true)
+    setTranslationError('')
+    try {
+      const arabic = await translateEnglishToArabic(newWord.english)
+      setNewWord((current) => ({ ...current, arabic }))
+    } catch (error) {
+      setTranslationError(error instanceof Error ? error.message : 'Could not translate this word.')
+    } finally {
+      setTranslatingWord(false)
+    }
+  }
+
   const renderPage = () => {
     switch (page) {
       case 'words':
@@ -220,19 +252,30 @@ export function ChildDashboard({
                       className="mt-1.5 min-h-12 w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 text-base outline-none focus:border-indigo-400 focus:bg-white"
                     />
                   </label>
-                  <label className="text-sm font-semibold text-slate-700">
-                    Arabic meaning
-                    <input
-                      required
-                      maxLength={100}
-                      dir="rtl"
-                      value={newWord.arabic}
-                      onChange={(event) => setNewWord((current) => ({ ...current, arabic: event.target.value }))}
-                      placeholder="فراشة"
-                      className="mt-1.5 min-h-12 w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 text-base outline-none focus:border-indigo-400 focus:bg-white"
-                    />
-                  </label>
+                  <div>
+                    <label className="text-sm font-semibold text-slate-700">
+                      Arabic meaning
+                      <input
+                        required
+                        maxLength={100}
+                        dir="rtl"
+                        value={newWord.arabic}
+                        onChange={(event) => setNewWord((current) => ({ ...current, arabic: event.target.value }))}
+                        placeholder="فراشة"
+                        className="mt-1.5 min-h-12 w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 text-base outline-none focus:border-indigo-400 focus:bg-white"
+                      />
+                    </label>
+                    <button
+                      type="button"
+                      onClick={() => void handleTranslateWord()}
+                      disabled={translatingWord || !newWord.english.trim()}
+                      className="mt-2 min-h-10 rounded-xl border border-indigo-200 px-3 text-sm font-bold text-indigo-700 disabled:opacity-50"
+                    >
+                      {translatingWord ? 'Translating…' : 'Translate to Arabic'}
+                    </button>
+                  </div>
                 </div>
+                {translationError ? <p role="alert" className="mt-3 text-sm text-rose-700">{translationError}</p> : null}
                 {addWordError ? (
                   <div className="mt-4 rounded-2xl bg-amber-50 p-4 text-sm text-amber-900">
                     <p role="alert">{addWordError}</p>
@@ -373,18 +416,6 @@ export function ChildDashboard({
                   You got {score} out of {quizQuestions.length} correct!
                 </p>
                 <p role="status" className="mt-2 text-sm text-emerald-800">{quizStatus}</p>
-                {!canSaveProgress ? (
-                  <p className="mt-2 text-sm text-emerald-800">Results are not saved while signed out. Parent sign-in is required to keep progress.</p>
-                ) : quizStatus.startsWith('Could not save') ? (
-                  <button
-                    type="button"
-                    disabled={quizSaving}
-                    onClick={() => void persistQuizResult(quizFinalScore ?? score)}
-                    className="mt-4 min-h-11 rounded-xl bg-white px-4 text-sm font-bold text-emerald-800 shadow-sm"
-                  >
-                    Retry saving
-                  </button>
-                ) : null}
                 <button
                   type="button"
                   onClick={() => {
@@ -393,12 +424,24 @@ export function ChildDashboard({
                     setSelectedChoice(null)
                     setQuizFinished(false)
                     setQuizFinalScore(null)
+                    setQuizSaved(false)
                     setQuizStatus('')
                   }}
+                  disabled={quizSaving}
                   className="mt-4 block min-h-11 rounded-xl bg-white px-4 text-sm font-bold text-slate-700 shadow-sm"
                 >
                   Try again
                 </button>
+                {canSaveProgress && !quizSaved ? (
+                  <button
+                    type="button"
+                    disabled={quizSaving}
+                    onClick={() => void persistQuizResult(quizFinalScore ?? score)}
+                    className="mt-4 ml-2 min-h-11 rounded-xl bg-indigo-600 px-4 text-sm font-bold text-white shadow-sm disabled:opacity-60"
+                  >
+                    {quizSaving ? 'Saving…' : 'Retry saving result'}
+                  </button>
+                ) : null}
               </div>
             ) : (
               <div className="space-y-4">
@@ -548,7 +591,7 @@ export function ChildDashboard({
 
   return (
     <div className="flex flex-col gap-6 md:flex-row">
-      <Sidebar title="Child" items={childNav} active={page} onSelect={setPage} />
+      <Sidebar title="Child" items={childNav} active={page} onSelect={onNavigate} />
       <main className="flex-1 rounded-3xl bg-slate-50/80 p-4 shadow-inner shadow-slate-200 md:p-6">{renderPage()}</main>
     </div>
   )

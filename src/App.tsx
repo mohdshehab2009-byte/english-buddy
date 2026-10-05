@@ -2,16 +2,38 @@ import { useEffect, useRef, useState } from 'react'
 import type { Session } from '@supabase/supabase-js'
 import { ParentAuth } from './components/ParentAuth'
 import { ChildDashboard } from './pages/ChildDashboard'
-import { LandingPage } from './pages/LandingPage'
 import { ParentDashboard } from './pages/ParentDashboard'
-import { addVocabularyItem, deleteVocabularyItem, loadVocabulary, updateVocabularyItem } from './lib/data'
+import { addVocabularyItem, deleteOwnedVocabularyItems, deleteVocabularyItem, loadVocabulary, updateVocabularyItem } from './lib/data'
 import { ensureChildProfile, loadLearningData, saveQuizResult, saveWordPractice } from './lib/learning'
 import { isSupabaseConfigured, supabase } from './lib/supabase'
 import type { QuizResult, Role, VocabularyItem, WordProgress } from './types'
 
+type DashboardRoute = {
+  role: Role
+  page: string
+}
+
+const defaultRoute: DashboardRoute = { role: 'child', page: 'home' }
+const routePages: Record<Role, string[]> = {
+  child: ['home', 'words', 'practice', 'quiz', 'progress', 'achievements'],
+  parent: ['dashboard', 'vocabulary', 'units', 'quizzes', 'progress', 'reports', 'settings'],
+}
+
+function readRoute(): DashboardRoute {
+  const [role, page] = window.location.hash.replace(/^#\/?/, '').split('/')
+  if ((role === 'child' || role === 'parent') && routePages[role].includes(page)) {
+    return { role, page }
+  }
+  return defaultRoute
+}
+
+function routeHash(route: DashboardRoute) {
+  return `#/${route.role}/${route.page}`
+}
+
 function App() {
-  const [showLanding, setShowLanding] = useState(true)
-  const [role, setRole] = useState<Role>('child')
+  const [route, setRoute] = useState<DashboardRoute>(readRoute)
+  const role = route.role
   const [vocabulary, setVocabulary] = useState<VocabularyItem[]>([])
   const [session, setSession] = useState<Session | null>(null)
   const sessionRef = useRef<Session | null>(null)
@@ -24,6 +46,29 @@ function App() {
   const [wordProgress, setWordProgress] = useState<WordProgress[]>([])
   const [quizResults, setQuizResults] = useState<QuizResult[]>([])
   const [learningError, setLearningError] = useState('')
+
+  useEffect(() => {
+    const syncRoute = () => setRoute(readRoute())
+    if (!window.location.hash) {
+      window.history.replaceState(null, '', routeHash(defaultRoute))
+    }
+    window.addEventListener('hashchange', syncRoute)
+    window.addEventListener('popstate', syncRoute)
+    return () => {
+      window.removeEventListener('hashchange', syncRoute)
+      window.removeEventListener('popstate', syncRoute)
+    }
+  }, [])
+
+  const navigate = (nextRole: Role, page: string) => {
+    const nextRoute = routePages[nextRole].includes(page)
+      ? { role: nextRole, page }
+      : defaultRoute
+    if (routeHash(nextRoute) !== window.location.hash) {
+      window.history.pushState(null, '', routeHash(nextRoute))
+    }
+    setRoute(nextRoute)
+  }
 
   useEffect(() => {
     if (!supabase) return
@@ -161,6 +206,23 @@ function App() {
     setVocabulary((current) => current.filter((item) => item.id !== id))
   }
 
+  const handleClearVocabulary = async () => {
+    if (!supabase) {
+      const deletedCount = vocabulary.length
+      setVocabulary([])
+      return { deletedCount, scope: 'all' as const }
+    }
+
+    if (!session?.user.id) {
+      throw new Error('Sign in as a parent before clearing your vocabulary.')
+    }
+
+    const deletedIds = await deleteOwnedVocabularyItems(session.user.id)
+    const deletedIdSet = new Set(deletedIds)
+    setVocabulary((current) => current.filter((item) => !deletedIdSet.has(item.id)))
+    return { deletedCount: deletedIds.length, scope: 'owned' as const }
+  }
+
   const handleUpdateWord = async (id: string, item: VocabularyItem) => {
     const saved = supabase ? await updateVocabularyItem(id, item) : item
     setVocabulary((current) => current.map((entry) => (entry.id === id ? saved : entry)))
@@ -193,22 +255,12 @@ function App() {
     }
   }
 
-  if (showLanding) {
-    return (
-      <div className="min-h-screen bg-[radial-gradient(circle_at_top,_#dbeafe_0%,_#f5f3ff_38%,_#fff7ed_100%)] px-4 py-5 text-slate-800 sm:px-6 sm:py-8">
-        <div className="mx-auto max-w-7xl">
-          <LandingPage onStart={() => setShowLanding(false)} />
-        </div>
-      </div>
-    )
-  }
-
   return (
     <div className="min-h-screen bg-[radial-gradient(circle_at_top,_#fef3c7_0%,_#f0f9ff_30%,_#eef2ff_100%)] px-4 py-5 text-slate-800 md:px-6">
       <div className="mx-auto max-w-7xl">
         <header className="mb-6 rounded-[28px] border border-slate-200 bg-white/80 p-4 shadow-lg shadow-slate-200/60 backdrop-blur-sm md:p-5">
           <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-            <button type="button" onClick={() => setShowLanding(true)} className="text-left">
+            <button type="button" onClick={() => navigate('child', 'home')} className="text-left">
               <p className="text-xs font-bold uppercase tracking-[0.25em] text-sky-600">Home learning companion</p>
               <span className="mt-2 block text-2xl font-black text-slate-900 md:text-3xl">English Buddy</span>
             </button>
@@ -217,7 +269,7 @@ function App() {
               <div className="inline-flex rounded-2xl bg-slate-100 p-1">
                 <button
                   type="button"
-                  onClick={() => setRole('child')}
+                  onClick={() => navigate('child', 'home')}
                   aria-pressed={role === 'child'}
                   className={[
                     'rounded-xl px-4 py-2 text-sm font-bold transition',
@@ -228,7 +280,7 @@ function App() {
                 </button>
                 <button
                   type="button"
-                  onClick={() => setRole('parent')}
+                  onClick={() => navigate('parent', 'dashboard')}
                   aria-pressed={role === 'parent'}
                   className={[
                     'rounded-xl px-4 py-2 text-sm font-bold transition',
@@ -300,8 +352,12 @@ function App() {
             <p role="status" className="rounded-2xl bg-white/80 p-5 text-sm font-semibold text-slate-600">Loading vocabulary…</p>
           ) : (
             <ChildDashboard
+              page={route.page}
+              onNavigate={(page) => navigate('child', page)}
               vocabulary={vocabulary}
               profileId={profileId}
+              supabaseConfigured={isSupabaseConfigured}
+              isParentSignedIn={Boolean(session)}
               canSaveProgress={Boolean(profileId)}
               wordProgress={wordProgress}
               quizResults={quizResults}
@@ -316,9 +372,12 @@ function App() {
           <ParentAuth onAuthenticated={() => setAuthError('')} />
         ) : (
           <ParentDashboard
+            page={route.page}
+            onNavigate={(page) => navigate('parent', page)}
             vocabulary={vocabulary}
             onAddWord={handleAddWord}
             onDeleteWord={handleDeleteWord}
+            onClearWords={handleClearVocabulary}
             onUpdateWord={handleUpdateWord}
             canManageAllWords={!isSupabaseConfigured}
             wordProgress={wordProgress}

@@ -117,3 +117,21 @@ export async function deleteVocabularyItem(id: string): Promise<void> {
     throw new Error(`Could not delete vocabulary: ${error.message}`)
   }
 }
+
+export async function deleteOwnedVocabularyItems(ownerId: string): Promise<string[]> {
+  if (!isSupabaseConfigured || !supabase) {
+    throw new Error('Supabase is not configured. Cannot delete vocabulary.')
+  }
+
+  const { data, error } = await supabase
+    .from('vocabulary')
+    .delete()
+    .eq('owner_id', ownerId)
+    .select('id')
+
+  if (error) {
+    throw new Error(`Could not clear your vocabulary: ${error.message}`)
+  }
+
+  return (data ?? []).map((row) => row.id)
+}

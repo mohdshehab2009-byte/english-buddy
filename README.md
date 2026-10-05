@@ -12,6 +12,8 @@ English Buddy is a lightweight English-learning app for children, built with Rea
 - Weekly quiz and progress tracking
 - Achievement badges and points
 - Supabase vocabulary reads and parent-authenticated vocabulary management
+- Section-specific links that survive refreshes (for example `#/child/quiz` and `#/parent/vocabulary`)
+- English-to-Arabic word translation while adding vocabulary
 
 ## Local development
 
@@ -31,6 +33,8 @@ The app starts with an empty word list when the environment variables are not se
 5. Open the app, choose **Parent view**, and create/sign in to a parent account. Confirm the email if Supabase asks.
 
 Vocabulary is readable without signing in. Children can add a word and Arabic meaning without an account; public submissions are limited to these two fields and length-checked by RLS. Anyone can add rows, so do not collect personal or sensitive information in vocabulary. Authenticated parents can add richer words and edit or delete only words owned by their account. Profiles, progress, quiz results, and achievements are restricted to the owning parent by RLS. When a parent is signed in, quiz results and spelling/translation practice are saved to that parent's child profile.
+
+The **Clear my words** action in Parent view deletes only vocabulary owned by the signed-in parent; shared and child-submitted words are retained. To start with a completely empty shared database, run `supabase/reset-vocabulary.sql` in the Supabase SQL Editor as described above. Translation uses MyMemory's free online translation service, so the English word is sent to that provider and free-service limits or availability may apply.
 
 Children can add a word from **Child view → My Words** using just its English spelling and Arabic meaning. Child words are saved directly to the shared Supabase vocabulary table and included in future quizzes; each quiz uses up to the 10 most recently added words.
 

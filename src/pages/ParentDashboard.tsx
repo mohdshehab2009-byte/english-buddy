@@ -2,12 +2,16 @@ import { useMemo, useState } from 'react'
 import { Sidebar } from '../components/Sidebar'
 import { StatCard } from '../components/StatCard'
 import { WordCard } from '../components/WordCard'
+import { translateEnglishToArabic } from '../lib/translation'
 import type { QuizResult, VocabularyItem, WordProgress } from '../types'
 
 interface ParentDashboardProps {
+  page: string
+  onNavigate: (page: string) => void
   vocabulary: VocabularyItem[]
   onAddWord: (item: VocabularyItem) => Promise<unknown>
   onDeleteWord: (id: string) => Promise<void>
+  onClearWords: () => Promise<{ deletedCount: number; scope: 'all' | 'owned' }>
   onUpdateWord: (id: string, item: VocabularyItem) => Promise<void>
   canManageAllWords?: boolean
   wordProgress: WordProgress[]
@@ -38,19 +42,24 @@ const parentNav = [
 ]
 
 export function ParentDashboard({
+  page,
+  onNavigate,
   vocabulary,
   onAddWord,
   onDeleteWord,
+  onClearWords,
   onUpdateWord,
   canManageAllWords = false,
   wordProgress,
   quizResults,
 }: ParentDashboardProps) {
-  const [page, setPage] = useState('dashboard')
   const [draft, setDraft] = useState<VocabularyItem>(createEmptyWord())
   const [editingId, setEditingId] = useState<string | null>(null)
   const [mutationError, setMutationError] = useState('')
   const [saving, setSaving] = useState(false)
+  const [translatingWord, setTranslatingWord] = useState(false)
+  const [translationError, setTranslationError] = useState('')
+  const [clearMessage, setClearMessage] = useState('')
 
   const unitSummary = useMemo(
     () =>
@@ -80,7 +89,7 @@ export function ParentDashboard({
       }
       setDraft(createEmptyWord())
       setEditingId(null)
-      setPage('vocabulary')
+      onNavigate('vocabulary')
     } catch (error) {
       setMutationError(error instanceof Error ? error.message : 'Could not save this word.')
     } finally {
@@ -97,6 +106,37 @@ export function ParentDashboard({
     }
   }
 
+  const handleTranslateWord = async () => {
+    setTranslatingWord(true)
+    setTranslationError('')
+    try {
+      const arabic = await translateEnglishToArabic(draft.english)
+      setDraft((current) => ({ ...current, arabic }))
+    } catch (error) {
+      setTranslationError(error instanceof Error ? error.message : 'Could not translate this word.')
+    } finally {
+      setTranslatingWord(false)
+    }
+  }
+
+  const handleClearWords = async () => {
+    const scope = canManageAllWords ? 'all words in this demo list' : 'words added by your account'
+    if (!window.confirm(`Delete ${scope}? This cannot be undone.`)) return
+
+    setMutationError('')
+    setClearMessage('')
+    try {
+      const { deletedCount, scope: deletedScope } = await onClearWords()
+      setClearMessage(
+        deletedScope === 'all'
+          ? `Cleared ${deletedCount} ${deletedCount === 1 ? 'word' : 'words'}.`
+          : `Deleted ${deletedCount} ${deletedCount === 1 ? 'word' : 'words'} added by your account. Shared words were kept.`,
+      )
+    } catch (error) {
+      setMutationError(error instanceof Error ? error.message : 'Could not clear your vocabulary.')
+    }
+  }
+
   const handleEdit = (id: string) => {
     const selected = vocabulary.find((item) => item.id === id)
     if (!selected) {
@@ -105,7 +145,7 @@ export function ParentDashboard({
 
     setEditingId(id)
     setDraft(selected)
-    setPage('vocabulary')
+    onNavigate('vocabulary')
   }
 
   const stats = [
@@ -158,16 +198,26 @@ export function ParentDashboard({
                     placeholder="butterfly"
                   />
                 </label>
-                <label className="text-sm font-medium text-slate-600">
-                  Arabic
-                  <input
-                    required
-                    value={draft.arabic}
-                    onChange={(event) => setDraft((current) => ({ ...current, arabic: event.target.value }))}
-                    className="mt-1 w-full rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm outline-none ring-0 transition focus:border-sky-400 focus:bg-white"
-                    placeholder="حديقة"
-                  />
-                </label>
+                <div>
+                  <label className="text-sm font-medium text-slate-600">
+                    Arabic
+                    <input
+                      required
+                      value={draft.arabic}
+                      onChange={(event) => setDraft((current) => ({ ...current, arabic: event.target.value }))}
+                      className="mt-1 w-full rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm outline-none ring-0 transition focus:border-sky-400 focus:bg-white"
+                      placeholder="حديقة"
+                    />
+                  </label>
+                  <button
+                    type="button"
+                    onClick={() => void handleTranslateWord()}
+                    disabled={translatingWord || !draft.english.trim()}
+                    className="mt-2 min-h-9 rounded-xl border border-sky-200 px-3 text-xs font-bold text-sky-700 disabled:opacity-50"
+                  >
+                    {translatingWord ? 'Translating…' : 'Translate to Arabic'}
+                  </button>
+                </div>
                 <label className="text-sm font-medium text-slate-600">
                   Unit
                   <input
@@ -219,6 +269,7 @@ export function ParentDashboard({
               {mutationError ? (
                 <p role="alert" className="mt-4 rounded-2xl bg-rose-50 p-3 text-sm text-rose-700">{mutationError}</p>
               ) : null}
+              {translationError ? <p role="alert" className="mt-4 text-sm text-rose-700">{translationError}</p> : null}
 
               <button
                 type="submit"
@@ -232,8 +283,20 @@ export function ParentDashboard({
             <div className="space-y-4">
               <div className="flex items-center justify-between">
                 <h3 className="text-xl font-bold text-slate-800">Vocabulary library</h3>
-                <span className="rounded-full bg-sky-100 px-3 py-1 text-xs font-bold text-sky-700">{vocabulary.length} words</span>
+                <div className="flex items-center gap-2">
+                  <span className="rounded-full bg-sky-100 px-3 py-1 text-xs font-bold text-sky-700">{vocabulary.length} words</span>
+                  {vocabulary.some((item) => canManageAllWords || item.canEdit) ? (
+                    <button
+                      type="button"
+                      onClick={() => void handleClearWords()}
+                      className="min-h-9 rounded-xl border border-rose-200 px-3 text-xs font-bold text-rose-700 hover:bg-rose-50"
+                    >
+                      {canManageAllWords ? 'Clear all words' : 'Clear my words'}
+                    </button>
+                  ) : null}
+                </div>
               </div>
+              {clearMessage ? <p role="status" className="rounded-2xl bg-emerald-50 px-4 py-3 text-sm text-emerald-800">{clearMessage}</p> : null}
               {!canManageAllWords && vocabulary.some((item) => !item.canEdit) ? (
                 <p className="rounded-2xl bg-slate-100 px-4 py-3 text-sm text-slate-600">
                   Shared vocabulary is read-only. You can edit or delete words that you add with this account.
@@ -423,7 +486,7 @@ export function ParentDashboard({
 
   return (
     <div className="flex flex-col gap-6 md:flex-row">
-      <Sidebar title="Parent" items={parentNav} active={page} onSelect={setPage} />
+      <Sidebar title="Parent" items={parentNav} active={page} onSelect={onNavigate} />
       <main className="flex-1 rounded-3xl bg-slate-50/80 p-4 shadow-inner shadow-slate-200 md:p-6">{renderPage()}</main>
     </div>
   )
