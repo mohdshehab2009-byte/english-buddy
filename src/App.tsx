@@ -81,7 +81,6 @@ function App() {
       sessionRef.current = nextSession
       setSession(nextSession)
       setAuthReady(true)
-      setIsLoading(true)
       setAuthError('')
       if (previousUserId !== nextSession?.user.id) {
         setProfileId(null)
@@ -156,8 +155,6 @@ function App() {
   useEffect(() => {
     let active = true
 
-    if (!authReady) return
-
     void loadVocabulary(session?.user.id).then((items) => {
       if (!active) return
       setLoadError('')
@@ -173,7 +170,7 @@ function App() {
     return () => {
       active = false
     }
-  }, [authReady, reloadCount, session?.user.id])
+  }, [reloadCount, session?.user.id])
 
   const handleAddWord = async (item: VocabularyItem) => {
     if (!supabase) {

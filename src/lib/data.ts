@@ -21,10 +21,21 @@ export async function loadVocabulary(userId?: string): Promise<VocabularyItem[]>
   }
 
   const fields = 'id,english,arabic,example_sentence,pronunciation,unit,week,difficulty,category,image'
-  const [vocabularyResult, ownedResult] = await Promise.all([
-    supabase.from('vocabulary').select(fields).order('created_at', { ascending: false }),
-    userId ? supabase.from('vocabulary').select('id').eq('owner_id', userId) : Promise.resolve({ data: [], error: null }),
-  ])
+  let vocabularyResult
+  let ownedResult
+  try {
+    [vocabularyResult, ownedResult] = await Promise.all([
+      supabase.from('vocabulary').select(fields).order('created_at', { ascending: false }),
+      userId ? supabase.from('vocabulary').select('id').eq('owner_id', userId) : Promise.resolve({ data: [], error: null }),
+    ])
+  } catch (error) {
+    if (error instanceof TypeError && /fetch|network/i.test(error.message)) {
+      throw new Error(
+        'Could not connect to Supabase. Check your internet connection, confirm VITE_SUPABASE_URL is correct, and make sure the Supabase project is active.',
+      )
+    }
+    throw error
+  }
 
   if (vocabularyResult.error) {
     throw new Error(`Could not load vocabulary: ${vocabularyResult.error.message}`)

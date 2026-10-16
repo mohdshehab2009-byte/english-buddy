@@ -22,7 +22,7 @@ English Buddy is a lightweight English-learning app for children, built with Rea
 3. Set `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` in `.env` using the project URL and publishable/anon key from Supabase.
 4. Run `npm run dev`.
 
-The app starts with an empty word list when the environment variables are not set. If values are present but incorrect, database errors appear in the app rather than being silently replaced with sample data.
+The app starts with an empty word list when the environment variables are not set. If values are present but incorrect, database errors appear in the app rather than being silently replaced with sample data. A `Could not connect to Supabase` error means the browser could not reach the configured project; check the network, verify `VITE_SUPABASE_URL` (including the GitHub Actions variable used for deployment), and confirm the Supabase project is active.
 
 ## Supabase schema
 
