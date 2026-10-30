@@ -1,10 +1,10 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Sidebar } from '../components/Sidebar'
 import { StatCard } from '../components/StatCard'
 import { WordCard } from '../components/WordCard'
 import { translateEnglishToArabic } from '../lib/translation'
-import { achievements, childProfile, createVocabularyQuiz } from '../data/mockData'
-import type { QuizResult, VocabularyItem, WordProgress } from '../types'
+import { achievements, childProfile, createVocabularyQuiz, createWeightedVocabularyQuestion } from '../data/mockData'
+import type { QuizQuestion, QuizResult, VocabularyItem, WordProgress } from '../types'
 
 const createChildWord = (): VocabularyItem => ({
   id: '',
@@ -75,6 +75,8 @@ export function ChildDashboard({
   const [addWordMessage, setAddWordMessage] = useState('')
   const [score, setScore] = useState(0)
   const [quizIndex, setQuizIndex] = useState(0)
+  const [quizQuestions, setQuizQuestions] = useState<QuizQuestion[]>(() => createVocabularyQuiz(vocabulary))
+  const [incorrectAnswers, setIncorrectAnswers] = useState<Record<string, number>>({})
   const [selectedChoice, setSelectedChoice] = useState<string | null>(null)
   const [quizFinished, setQuizFinished] = useState(false)
   const [quizFinalScore, setQuizFinalScore] = useState<number | null>(null)
@@ -86,9 +88,20 @@ export function ChildDashboard({
   const [practiceSaving, setPracticeSaving] = useState(false)
   const [practiceStatus, setPracticeStatus] = useState('')
 
-  const quizQuestions = useMemo(() => createVocabularyQuiz(vocabulary), [vocabulary])
   const quizQuestion = quizQuestions[quizIndex]
   const progressByWord = useMemo(() => new Map(wordProgress.map((item) => [item.wordId, item])), [wordProgress])
+
+  useEffect(() => {
+    setQuizQuestions(createVocabularyQuiz(vocabulary))
+    setScore(0)
+    setQuizIndex(0)
+    setIncorrectAnswers({})
+    setSelectedChoice(null)
+    setQuizFinished(false)
+    setQuizFinalScore(null)
+    setQuizSaved(false)
+    setQuizStatus('')
+  }, [vocabulary])
 
   const averageMastery = useMemo(() => {
     if (!wordProgress.length) {
@@ -124,22 +137,36 @@ export function ChildDashboard({
   }
 
   const handleQuizAnswer = (choice: string) => {
-    if (selectedChoice || quizFinished) return
+    if (selectedChoice !== null || quizFinished) return
     setSelectedChoice(choice)
     setQuizStatus('')
   }
 
   const handleQuizContinue = async () => {
-    if (!selectedChoice || quizFinished) return
-    const nextScore = score + Number(selectedChoice === quizQuestion.answer)
+    if (selectedChoice === null || quizFinished || !quizQuestion) return
+    const correct = selectedChoice === quizQuestion.answer
+    const nextScore = score + Number(correct)
 
     if (quizIndex < quizQuestions.length - 1) {
+      const nextIncorrectAnswers = correct
+        ? incorrectAnswers
+        : { ...incorrectAnswers, [quizQuestion.id]: (incorrectAnswers[quizQuestion.id] ?? 0) + 1 }
       setScore(nextScore)
+      setIncorrectAnswers(nextIncorrectAnswers)
+      const nextQuestions = [...quizQuestions]
+      nextQuestions[quizIndex + 1] = createWeightedVocabularyQuestion(vocabulary, nextIncorrectAnswers)
+      setQuizQuestions(nextQuestions)
       setQuizIndex((current) => current + 1)
       setSelectedChoice(null)
       return
     }
 
+    if (!correct) {
+      setIncorrectAnswers((current) => ({
+        ...current,
+        [quizQuestion.id]: (current[quizQuestion.id] ?? 0) + 1,
+      }))
+    }
     setScore(nextScore)
     setQuizFinished(true)
     setQuizFinalScore(nextScore)
@@ -218,6 +245,9 @@ export function ChildDashboard({
               <div>
                 <h3 className="text-2xl font-black text-slate-800">My Words</h3>
                 <p className="mt-1 text-sm text-slate-500">Add new words you discover and practice them here.</p>
+                <p className="mt-2 inline-flex rounded-full bg-indigo-50 px-3 py-1 text-sm font-bold text-indigo-700">
+                  {vocabulary.length} {vocabulary.length === 1 ? 'word' : 'words'} in your list
+                </p>
               </div>
               <button
                 type="button"
@@ -408,7 +438,7 @@ export function ChildDashboard({
 
             {!quizQuestions.length ? (
               <p className="rounded-2xl bg-sky-50 p-4 text-sm text-sky-800">
-                Add a few words in My Words first. The latest words you add will be included in future quizzes.
+                Add words in My Words first. Your quiz will randomly practice words from your full list.
               </p>
             ) : quizFinished ? (
               <div className="rounded-2xl bg-emerald-50 p-5">
@@ -421,6 +451,8 @@ export function ChildDashboard({
                   onClick={() => {
                     setScore(0)
                     setQuizIndex(0)
+                    setQuizQuestions(createVocabularyQuiz(vocabulary))
+                    setIncorrectAnswers({})
                     setSelectedChoice(null)
                     setQuizFinished(false)
                     setQuizFinalScore(null)
@@ -445,9 +477,9 @@ export function ChildDashboard({
               </div>
             ) : (
               <div className="space-y-4">
-                <p className="text-xl font-bold text-slate-800">{quizQuestion.prompt}</p>
+                {quizQuestion ? <p className="text-xl font-bold text-slate-800">{quizQuestion.prompt}</p> : null}
                 <div className="grid gap-3 md:grid-cols-2">
-                  {quizQuestion.choices.map((choice) => (
+                  {(quizQuestion?.choices ?? []).map((choice) => (
                     <button
                       key={choice}
                       type="button"
@@ -455,18 +487,28 @@ export function ChildDashboard({
                       onClick={() => handleQuizAnswer(choice)}
                       className={[
                         'min-h-12 rounded-2xl border px-4 py-3 text-left text-base font-semibold transition',
-                        selectedChoice === choice
-                          ? 'border-sky-500 bg-sky-100 text-sky-900'
-                          : 'border-slate-200 bg-slate-50 text-slate-700 hover:border-sky-400 hover:bg-sky-50',
+                        selectedChoice === choice && choice === quizQuestion.answer
+                          ? 'border-emerald-500 bg-emerald-100 text-emerald-900'
+                          : selectedChoice === choice
+                            ? 'border-rose-500 bg-rose-100 text-rose-900'
+                            : 'border-slate-200 bg-slate-50 text-slate-700 hover:border-sky-400 hover:bg-sky-50',
                       ].join(' ')}
                     >
                       {choice}
                     </button>
                   ))}
                 </div>
-                {selectedChoice ? (
+                {selectedChoice !== null && quizQuestion ? (
                   <>
-                    <p className="rounded-2xl bg-emerald-50 p-3 text-sm text-emerald-700">{quizQuestion.explanation}</p>
+                    <p className={[
+                      'rounded-2xl p-3 text-sm',
+                      selectedChoice === quizQuestion.answer ? 'bg-emerald-50 text-emerald-700' : 'bg-rose-50 text-rose-800',
+                    ].join(' ')}>
+                      {selectedChoice === quizQuestion.answer
+                        ? 'Correct! '
+                        : 'Not quite. This word is more likely to appear again. '}
+                      {quizQuestion.explanation}
+                    </p>
                     <button
                       type="button"
                       onClick={() => void handleQuizContinue()}

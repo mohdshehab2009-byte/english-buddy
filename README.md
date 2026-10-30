@@ -36,7 +36,7 @@ Vocabulary is readable without signing in. Children can add a word and Arabic me
 
 The **Clear my words** action in Parent view deletes only vocabulary owned by the signed-in parent; shared and child-submitted words are retained. To start with a completely empty shared database, run `supabase/reset-vocabulary.sql` in the Supabase SQL Editor as described above. Translation uses MyMemory's free online translation service, so the English word is sent to that provider and free-service limits or availability may apply.
 
-Children can add a word from **Child view → My Words** using just its English spelling and Arabic meaning. Child words are saved directly to the shared Supabase vocabulary table and included in future quizzes; each quiz uses up to the 10 most recently added words.
+Children can add a word from **Child view → My Words** using just its English spelling and Arabic meaning. Child words are saved directly to the shared Supabase vocabulary table and included in future quizzes. The child word list shows its total word count. Each quiz has 15 shuffled questions selected from the full vocabulary list, and words answered incorrectly are more likely to appear again during that quiz.
 
 The app creates or updates one child profile named Mujtaba per parent account. Quiz results and best spelling/translation scores appear in the child's **Progress** view and the parent's **Child Progress** and **Reports** views.
 

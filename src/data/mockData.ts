@@ -22,29 +22,62 @@ export const achievements: Achievement[] = [
   { id: 'perfect-speller', title: 'Perfect Speller', description: 'Get 100% spelling score', unlocked: false, icon: '✨' },
 ]
 
+const shuffle = <T,>(items: T[]): T[] => {
+  const shuffled = [...items]
+  for (let index = shuffled.length - 1; index > 0; index -= 1) {
+    const swapIndex = Math.floor(Math.random() * (index + 1))
+    const currentItem = shuffled[index]
+    shuffled[index] = shuffled[swapIndex]
+    shuffled[swapIndex] = currentItem
+  }
+  return shuffled
+}
+
+export function createVocabularyQuestion(item: VocabularyItem, vocabulary: VocabularyItem[]): QuizQuestion {
+  const distractors = [...new Set(
+    vocabulary.filter((candidate) => candidate.id !== item.id).map((candidate) => candidate.arabic),
+  )].filter((meaning) => meaning !== item.arabic)
+
+  const choices = shuffle([item.arabic, ...shuffle(distractors).slice(0, 3)])
+
+  return {
+    id: item.id,
+    prompt: `What is the Arabic meaning of “${item.english}”?`,
+    choices,
+    answer: item.arabic,
+    explanation: item.example || `${item.english} means ${item.arabic}.`,
+  }
+}
+
 export function createVocabularyQuiz(vocabulary: VocabularyItem[]): QuizQuestion[] {
-  const candidates = vocabulary.slice(0, 10)
-  if (!candidates.length) return []
+  if (!vocabulary.length) return []
 
-  return candidates.map((item) => {
-    const distractors = [...new Set([
-      ...candidates.filter((candidate) => candidate.id !== item.id).map((candidate) => candidate.arabic),
-    ])].filter((meaning) => meaning !== item.arabic).slice(0, 3)
-
-    const choices = [item.arabic, ...distractors]
-    for (let index = choices.length - 1; index > 0; index -= 1) {
-      const swapIndex = Math.floor(Math.random() * (index + 1))
-      const currentChoice = choices[index]
-      choices[index] = choices[swapIndex]
-      choices[swapIndex] = currentChoice
+  const questions: QuizQuestion[] = []
+  while (questions.length < 15) {
+    for (const item of shuffle(vocabulary)) {
+      questions.push(createVocabularyQuestion(item, vocabulary))
+      if (questions.length === 15) break
     }
+  }
+  return questions
+}
 
-    return {
-      id: item.id,
-      prompt: `What is the Arabic meaning of “${item.english}”?`,
-      choices,
-      answer: item.arabic,
-      explanation: item.example || `${item.english} means ${item.arabic}.`,
-    }
-  })
+export function createWeightedVocabularyQuestion(
+  vocabulary: VocabularyItem[],
+  incorrectAnswers: Record<string, number>,
+): QuizQuestion {
+  const totalWeight = vocabulary.reduce(
+    (total, item) => total + 1 + (incorrectAnswers[item.id] ?? 0) * 4,
+    0,
+  )
+  let choice = Math.random() * totalWeight
+
+  for (const item of vocabulary) {
+    choice -= 1 + (incorrectAnswers[item.id] ?? 0) * 4
+    if (choice < 0) return createVocabularyQuestion(item, vocabulary)
+  }
+
+  const fallback = vocabulary[vocabulary.length - 1]
+  if (!fallback) throw new Error('Cannot create a quiz question without vocabulary.')
+  return createVocabularyQuestion(fallback, vocabulary)
 }
