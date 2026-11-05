@@ -40,6 +40,15 @@ Children can add a word from **Child view → My Words** using just its English 
 
 The app creates or updates one child profile named Mujtaba per parent account. Quiz results and best spelling/translation scores appear in the child's **Progress** view and the parent's **Child Progress** and **Reports** views.
 
+## Buddy ID: stars and missions on every device
+
+Stars, streaks, levels, badges and the daily mission are saved on the device and synced to Supabase under the child's **Buddy ID** (for example `STAR-7K3Q`), so the child never needs to sign in.
+
+- Each new device creates a Buddy ID automatically. It is shown on **Child view → My Journey**.
+- On another device, enter that ID (from the "Playing on a new device?" card on Home, or **My Journey → I already have a Buddy ID**). Progress from both devices is combined, keeping the best values.
+- Syncing needs the `child_rewards` table and the `get_child_rewards` / `save_child_rewards` functions from `supabase/schema.sql`. Re-run that file in the SQL Editor after upgrading. Until then, rewards stay on each device.
+- The table cannot be listed by visitors; rewards can only be read or written by someone who knows the Buddy ID, so treat it like a simple password and don't post it publicly.
+
 ## Production build
 
 Run `npm run build`.

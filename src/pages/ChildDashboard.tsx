@@ -2,12 +2,14 @@ import { useCallback, useMemo, useState } from 'react'
 import { Confetti, StarPop } from '../components/Celebration'
 import { PracticeGames } from '../components/child/PracticeGames'
 import { QuizGame } from '../components/child/QuizGame'
+import { BuddyIdCard } from '../components/child/BuddyIdCard'
 import { Stars, WordBubble } from '../components/child/WordBubble'
 import { Sidebar } from '../components/Sidebar'
 import { childProfile } from '../data/mockData'
 import { isSoundOn, setSoundOn, sounds, speak } from '../lib/feedback'
 import { wordStars } from '../lib/games'
 import { applyEvent, computeAchievements, DAILY_PRACTICE_GOAL, levelFor, useRewards, type RewardEvent } from '../lib/rewards'
+import { canSyncRewards } from '../lib/childSync'
 import { translateEnglishToArabic } from '../lib/translation'
 import type { QuizResult, VocabularyItem, WordProgress } from '../types'
 
@@ -68,7 +70,8 @@ export function ChildDashboard({
   onSaveWordPractice,
   onSaveQuizResult,
 }: ChildDashboardProps) {
-  const { rewards, record } = useRewards()
+  const { rewards, record, childId, isNewDevice, syncStatus, linkChildId } = useRewards()
+  const [hideNewDevice, setHideNewDevice] = useState(false)
   const [starPop, setStarPop] = useState({ key: 0, amount: 0 })
   const [confettiKey, setConfettiKey] = useState(0)
   const [soundOn, setSoundOnState] = useState(isSoundOn)
@@ -169,6 +172,9 @@ export function ChildDashboard({
 
     return (
       <div className="space-y-5">
+        {canSyncRewards && isNewDevice && rewards.stars === 0 && !hideNewDevice ? (
+          <BuddyIdCard childId={childId} syncStatus={syncStatus} onLink={linkChildId} compact onDismiss={() => setHideNewDevice(true)} />
+        ) : null}
         <section className="relative overflow-hidden rounded-[2rem] bg-gradient-to-br from-violet-500 via-sky-500 to-emerald-400 p-6 text-white shadow-xl shadow-sky-200 sm:p-8">
           <span aria-hidden="true" className="float absolute -right-2 -top-2 text-8xl opacity-30 sm:text-9xl">{level.icon}</span>
           <p className="text-lg font-bold text-white/90">Hi there 👋</p>
@@ -378,6 +384,8 @@ export function ChildDashboard({
             </div>
           </div>
         </section>
+
+        <BuddyIdCard childId={childId} syncStatus={syncStatus} onLink={linkChildId} />
 
         <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
           {[

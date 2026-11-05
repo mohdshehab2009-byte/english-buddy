@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
+import { canSyncRewards, CHILD_ID_PATTERN, fetchRemoteRewards, getOrCreateChildId, normalizeChildId, saveRemoteRewards, storeChildId } from './childSync'
 
 // Stars, streaks and daily missions live on this device so they work even without a parent signing in.
 
@@ -57,17 +58,50 @@ const initialState = (): RewardState => ({
   today: emptyToday(),
 })
 
+/** Fill in missing fields, start a fresh day and break the streak if a day was missed. */
+function normalize(raw: Partial<RewardState> | null | undefined): RewardState {
+  const base = initialState()
+  const saved: RewardState = { ...base, ...(raw ?? {}), today: { ...base.today, ...(raw?.today ?? {}) } }
+  for (const key of ['stars', 'streak', 'bestStreak', 'wordsAdded', 'correctSpellings', 'correctTranslations', 'correctListening', 'quizzesDone', 'bestQuizPercent'] as const) {
+    saved[key] = Math.max(0, Math.floor(Number(saved[key]) || 0))
+  }
+  if (saved.today.day !== dayKey()) saved.today = emptyToday()
+  if (saved.lastActiveDay && saved.lastActiveDay !== dayKey() && saved.lastActiveDay !== yesterdayKey()) {
+    saved.streak = 0
+  }
+  return saved
+}
+
+/** Combine two copies (this device + the cloud) without losing progress from either. */
+export function mergeRewards(a: RewardState, b: RewardState): RewardState {
+  const later = (a.lastActiveDay ?? '') >= (b.lastActiveDay ?? '') ? a : b
+  const sameDay = a.lastActiveDay === b.lastActiveDay
+  const todayA = a.today.day === dayKey() ? a.today : emptyToday()
+  const todayB = b.today.day === dayKey() ? b.today : emptyToday()
+  return normalize({
+    stars: Math.max(a.stars, b.stars),
+    streak: sameDay ? Math.max(a.streak, b.streak) : later.streak,
+    bestStreak: Math.max(a.bestStreak, b.bestStreak),
+    lastActiveDay: later.lastActiveDay,
+    wordsAdded: Math.max(a.wordsAdded, b.wordsAdded),
+    correctSpellings: Math.max(a.correctSpellings, b.correctSpellings),
+    correctTranslations: Math.max(a.correctTranslations, b.correctTranslations),
+    correctListening: Math.max(a.correctListening, b.correctListening),
+    quizzesDone: Math.max(a.quizzesDone, b.quizzesDone),
+    bestQuizPercent: Math.max(a.bestQuizPercent, b.bestQuizPercent),
+    today: {
+      day: dayKey(),
+      practiced: Math.max(todayA.practiced, todayB.practiced),
+      quizDone: todayA.quizDone || todayB.quizDone,
+      wordAdded: todayA.wordAdded || todayB.wordAdded,
+    },
+  })
+}
+
 function load(): RewardState {
   try {
     const raw = localStorage.getItem(STORAGE_KEY)
-    if (!raw) return initialState()
-    const saved = { ...initialState(), ...(JSON.parse(raw) as Partial<RewardState>) }
-    if (saved.today.day !== dayKey()) saved.today = emptyToday()
-    // A missed day breaks the streak.
-    if (saved.lastActiveDay && saved.lastActiveDay !== dayKey() && saved.lastActiveDay !== yesterdayKey()) {
-      saved.streak = 0
-    }
-    return saved
+    return normalize(raw ? (JSON.parse(raw) as Partial<RewardState>) : null)
   } catch {
     return initialState()
   }
@@ -137,19 +171,92 @@ export function applyEvent(previous: RewardState, event: RewardEvent): RewardSta
   return state
 }
 
+export type SyncStatus = 'local' | 'syncing' | 'synced' | 'offline'
+
 export function useRewards() {
   const [rewards, setRewards] = useState<RewardState>(load)
+  const [child] = useState(getOrCreateChildId)
+  const [childId, setChildId] = useState(child.id)
+  const [syncStatus, setSyncStatus] = useState<SyncStatus>(canSyncRewards ? 'syncing' : 'local')
+  const [loadedFromCloud, setLoadedFromCloud] = useState(false)
+  const rewardsRef = useRef(rewards)
 
   useEffect(() => {
+    rewardsRef.current = rewards
     save(rewards)
   }, [rewards])
+
+  /** Fetch the cloud copy, merge it with this device and save the result back. */
+  const syncNow = useCallback(async (id: string) => {
+    if (!canSyncRewards) return
+    try {
+      const remote = await fetchRemoteRewards(id)
+      const merged = remote ? mergeRewards(rewardsRef.current, normalize(remote as Partial<RewardState>)) : rewardsRef.current
+      rewardsRef.current = merged
+      setRewards(merged)
+      await saveRemoteRewards(id, merged)
+      setLoadedFromCloud(true)
+      setSyncStatus('synced')
+    } catch {
+      setSyncStatus('offline')
+    }
+  }, [])
+
+  // Sync when the app opens and whenever the child comes back to this tab.
+  useEffect(() => {
+    if (!canSyncRewards) return
+    void syncNow(childId)
+    const onFocus = () => {
+      if (document.visibilityState === 'visible') void syncNow(childId)
+    }
+    document.addEventListener('visibilitychange', onFocus)
+    window.addEventListener('focus', onFocus)
+    return () => {
+      document.removeEventListener('visibilitychange', onFocus)
+      window.removeEventListener('focus', onFocus)
+    }
+  }, [childId, syncNow])
+
+  // Save changes to the cloud shortly after they happen.
+  useEffect(() => {
+    if (!canSyncRewards || !loadedFromCloud) return
+    const timer = window.setTimeout(() => {
+      void saveRemoteRewards(childId, rewards)
+        .then(() => setSyncStatus('synced'))
+        .catch(() => setSyncStatus('offline'))
+    }, 800)
+    return () => window.clearTimeout(timer)
+  }, [rewards, childId, loadedFromCloud])
 
   const record = useCallback((event: RewardEvent) => {
     setRewards((current) => applyEvent(current, event))
     return starsFor(event)
   }, [])
 
-  return { rewards, record }
+  /** Use a Buddy ID from another device. Progress from both devices is combined. */
+  const linkChildId = useCallback(async (value: string): Promise<string | null> => {
+    const id = normalizeChildId(value)
+    if (!CHILD_ID_PATTERN.test(id)) return 'A Buddy ID looks like STAR-7K3Q (4 letters/numbers, a dash, 4 more).'
+    if (id === childId) return 'This device already uses that Buddy ID.'
+    if (!canSyncRewards) return 'Syncing needs the online database. Ask a grown-up to set up Supabase.'
+    try {
+      const remote = await fetchRemoteRewards(id)
+      if (!remote) return 'We couldn’t find that Buddy ID. Check the letters and try again.'
+      const merged = mergeRewards(rewardsRef.current, normalize(remote as Partial<RewardState>))
+      rewardsRef.current = merged
+      setRewards(merged)
+      await saveRemoteRewards(id, merged)
+      storeChildId(id)
+      setChildId(id)
+      setLoadedFromCloud(true)
+      setSyncStatus('synced')
+      return null
+    } catch {
+      return 'Could not connect right now. Please try again in a moment.'
+    }
+  }, [childId])
+
+  return { rewards, record, childId, isNewDevice: child.isNew && childId === child.id, syncStatus, linkChildId }
 }
 
 export interface KidAchievement {

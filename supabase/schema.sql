@@ -183,3 +183,46 @@ create policy "Parents can manage own achievements"
         and profiles.parent_id = (select auth.uid())
     )
   );
+
+-- Child rewards (stars, streak, daily mission, badges) synced across devices by a Buddy ID.
+-- Children never sign in, so the ID acts as a secret key: the table is not readable directly,
+-- and the app reads/writes one row at a time through the functions below.
+create table if not exists child_rewards (
+  child_code text primary key,
+  data jsonb not null default '{}'::jsonb,
+  updated_at timestamptz not null default now(),
+  constraint child_code_format check (child_code ~ '^[A-Z0-9]{4}-[A-Z0-9]{4}$'),
+  constraint child_rewards_is_object check (jsonb_typeof(data) = 'object'),
+  constraint child_rewards_size check (pg_column_size(data) < 20000)
+);
+
+alter table child_rewards enable row level security;
+revoke all on table child_rewards from anon, authenticated;
+
+create or replace function get_child_rewards(p_code text)
+returns jsonb
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select data from child_rewards where child_code = upper(btrim(p_code));
+$$;
+
+create or replace function save_child_rewards(p_code text, p_data jsonb)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  insert into child_rewards (child_code, data, updated_at)
+  values (upper(btrim(p_code)), p_data, now())
+  on conflict (child_code) do update set data = excluded.data, updated_at = now();
+end;
+$$;
+
+revoke all on function get_child_rewards(text) from public;
+revoke all on function save_child_rewards(text, jsonb) from public;
+grant execute on function get_child_rewards(text) to anon, authenticated;
+grant execute on function save_child_rewards(text, jsonb) to anon, authenticated;
