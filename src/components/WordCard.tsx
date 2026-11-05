@@ -52,7 +52,7 @@ export function WordCard({ item, onEdit, onDelete, compact = false }: WordCardPr
       </div>
 
       <p className="mt-4 text-sm text-slate-600">{compact ? item.example : `Example: “${item.example}”`}</p>
-      <p className="mt-2 text-xs text-slate-500">Pronunciation: {item.pronunciation}</p>
+      {item.pronunciation ? <p className="mt-2 text-xs text-slate-500">Pronunciation: {item.pronunciation}</p> : null}
     </article>
   )
 }

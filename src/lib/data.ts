@@ -6,7 +6,7 @@ const mapRow = (row: Record<string, unknown>, canEdit = false): VocabularyItem =
   english: String(row.english ?? ''),
   arabic: String(row.arabic ?? ''),
   example: String(row.example_sentence ?? row.example ?? ''),
-  pronunciation: String(row.pronunciation ?? '/ˈpræktɪs/'),
+  pronunciation: String(row.pronunciation ?? ''),
   unit: String(row.unit ?? 'New words'),
   week: String(row.week ?? 'Added words'),
   difficulty: (String(row.difficulty ?? 'Easy') as VocabularyItem['difficulty']),
