@@ -426,17 +426,16 @@ export function ChildDashboard({
                   <button type="button" onClick={() => playWord(item.id)} className="rounded-2xl bg-amber-100 px-3 py-3 text-sm font-black text-amber-700 hover:bg-amber-200" aria-label={`Practice ${item.english}`}>
                     🧩
                   </button>
-                  {(!supabaseConfigured || (isParentSignedIn && item.canEdit)) ? (
-                    <button
-                      type="button"
-                      onClick={() => void handleDeleteWord(item)}
-                      disabled={deletingWordId === item.id}
-                      className="rounded-2xl bg-rose-100 px-3 py-3 text-sm font-black text-rose-700 hover:bg-rose-200 disabled:cursor-wait disabled:opacity-50"
-                      aria-label={`Remove ${item.english} from My Words`}
-                    >
-                      {deletingWordId === item.id ? '…' : '🗑️'}
-                    </button>
-                  ) : null}
+                  <button
+                    type="button"
+                    onClick={() => void handleDeleteWord(item)}
+                    disabled={deletingWordId === item.id}
+                    className="rounded-2xl bg-rose-100 px-3 py-3 text-sm font-black text-rose-700 hover:bg-rose-200 disabled:cursor-wait disabled:opacity-50"
+                    aria-label={`Remove ${item.english} from My Words`}
+                    title={supabaseConfigured && isParentSignedIn && item.canEdit ? 'Delete for everyone' : 'Hide on this device'}
+                  >
+                    {deletingWordId === item.id ? '…' : '🗑️'}
+                  </button>
                 </article>
               ))}
             </div>
