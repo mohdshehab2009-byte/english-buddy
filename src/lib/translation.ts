@@ -13,7 +13,7 @@ export async function translateEnglishToArabic(text: string): Promise<string> {
   }
 
   const params = new URLSearchParams({
-    q: trimmedText,
+    q: trimmedText.toLowerCase(),
     langpair: 'en|ar',
   })
   const response = await fetch(`https://api.mymemory.translated.net/get?${params}`)

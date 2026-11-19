@@ -6,6 +6,7 @@ English Buddy is a lightweight English-learning app for children, built with Rea
 
 - Child-friendly learning dashboard with mobile-first navigation
 - Parent vocabulary management with add/edit/delete workflow
+- Child vocabulary list with parent-authorized individual deletion
 - Child-friendly word additions saved directly to shared vocabulary without signing in
 - Unit and week organization for learning content
 - Practice tasks for listening, spelling, and translation
@@ -32,7 +33,7 @@ The app starts with an empty word list when the environment variables are not se
 4. In **Authentication → URL Configuration**, set the Site URL to `https://mohdshehab2009-byte.github.io/english-buddy/` and allow that URL as a redirect URL. Add the local development URL too if you test sign-up locally.
 5. Open the app, choose **Parent view**, and create/sign in to a parent account. Confirm the email if Supabase asks.
 
-Vocabulary is readable without signing in. Children can add a word and Arabic meaning without an account; public submissions are limited to these two fields and length-checked by RLS. Anyone can add rows, so do not collect personal or sensitive information in vocabulary. Authenticated parents can add richer words and edit or delete only words owned by their account. Profiles, progress, quiz results, and achievements are restricted to the owning parent by RLS. When a parent is signed in, quiz results and spelling/translation practice are saved to that parent's child profile.
+Vocabulary is readable without signing in. Children can add a word and Arabic meaning without an account; public submissions are limited to these two fields and length-checked by RLS. Anyone can add rows, so do not collect personal or sensitive information in vocabulary. In Child view, a signed-in parent can delete words owned by that account; shared and anonymous child-added words are read-only there. Authenticated parents can add richer words and edit or delete words owned by their account. Profiles, progress, quiz results, and achievements are restricted to the owning parent by RLS. When a parent is signed in, quiz results and spelling/translation practice are saved to that parent's child profile.
 
 The **Clear my words** action in Parent view deletes only vocabulary owned by the signed-in parent; shared and child-submitted words are retained. To start with a completely empty shared database, run `supabase/reset-vocabulary.sql` in the Supabase SQL Editor as described above. Translation uses MyMemory's free online translation service, so the English word is sent to that provider and free-service limits or availability may apply.
 

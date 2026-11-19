@@ -37,6 +37,7 @@ interface ChildDashboardProps {
   wordProgress: WordProgress[]
   quizResults: QuizResult[]
   onAddVocabulary: (item: VocabularyItem) => Promise<VocabularyItem>
+  onDeleteVocabulary: (id: string) => Promise<void>
   onSaveWordPractice: (wordId: string, kind: 'spelling' | 'translation', score: number) => Promise<WordProgress>
   onSaveQuizResult: (score: number, totalQuestions: number) => Promise<QuizResult>
 }
@@ -67,6 +68,7 @@ export function ChildDashboard({
   wordProgress,
   quizResults,
   onAddVocabulary,
+  onDeleteVocabulary,
   onSaveWordPractice,
   onSaveQuizResult,
 }: ChildDashboardProps) {
@@ -82,6 +84,8 @@ export function ChildDashboard({
   const [addingWord, setAddingWord] = useState(false)
   const [translatingWord, setTranslatingWord] = useState(false)
   const [addWordError, setAddWordError] = useState('')
+  const [deleteWordError, setDeleteWordError] = useState('')
+  const [deletingWordId, setDeletingWordId] = useState<string | null>(null)
   const [search, setSearch] = useState('')
 
   const progressByWord = useMemo(() => new Map(wordProgress.map((item) => [item.wordId, item])), [wordProgress])
@@ -141,6 +145,26 @@ export function ChildDashboard({
       sounds.wrong()
     } finally {
       setAddingWord(false)
+    }
+  }
+
+  const handleDeleteWord = async (item: VocabularyItem) => {
+    const canDelete = !supabaseConfigured || (isParentSignedIn && item.canEdit)
+    if (!canDelete) return
+
+    const deletionScope = supabaseConfigured ? 'for everyone' : 'from this device'
+    if (!window.confirm(`Delete "${item.english}" ${deletionScope}? This also removes its saved practice scores and cannot be undone.`)) {
+      return
+    }
+
+    setDeleteWordError('')
+    setDeletingWordId(item.id)
+    try {
+      await onDeleteVocabulary(item.id)
+    } catch (error) {
+      setDeleteWordError(error instanceof Error ? error.message : 'Could not delete this word.')
+    } finally {
+      setDeletingWordId(null)
     }
   }
 
@@ -258,6 +282,10 @@ export function ChildDashboard({
     const shown = query ? vocabulary.filter((item) => item.english.toLowerCase().includes(query) || item.arabic.includes(query)) : vocabulary
     return (
       <div className="space-y-5">
+        {deleteWordError ? <p role="alert" className="rounded-2xl bg-rose-50 p-3 font-semibold text-rose-800">{deleteWordError}</p> : null}
+        {supabaseConfigured && !isParentSignedIn ? (
+          <p className="rounded-2xl bg-slate-100 p-3 text-sm font-semibold text-slate-600">A grown-up must sign in to delete words. Shared words can’t be deleted from Child view.</p>
+        ) : null}
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
             <h3 className="text-3xl font-black text-slate-800">📚 My Words</h3>
@@ -349,6 +377,17 @@ export function ChildDashboard({
                   <button type="button" onClick={() => playWord(item.id)} className="rounded-2xl bg-amber-100 px-3 py-3 text-sm font-black text-amber-700 hover:bg-amber-200" aria-label={`Practice ${item.english}`}>
                     🧩
                   </button>
+                  {(!supabaseConfigured || (isParentSignedIn && item.canEdit)) ? (
+                    <button
+                      type="button"
+                      onClick={() => void handleDeleteWord(item)}
+                      disabled={deletingWordId === item.id}
+                      className="rounded-2xl bg-rose-100 px-3 py-3 text-sm font-black text-rose-700 hover:bg-rose-200 disabled:cursor-wait disabled:opacity-50"
+                      aria-label={`Delete ${item.english}`}
+                    >
+                      {deletingWordId === item.id ? '…' : '🗑️'}
+                    </button>
+                  ) : null}
                 </article>
               ))}
             </div>

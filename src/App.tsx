@@ -359,6 +359,7 @@ function App() {
               wordProgress={wordProgress}
               quizResults={quizResults}
               onAddVocabulary={handleChildAddWord}
+              onDeleteVocabulary={handleDeleteWord}
               onSaveWordPractice={handleSaveWordPractice}
               onSaveQuizResult={handleSaveQuizResult}
             />
