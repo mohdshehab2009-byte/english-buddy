@@ -26,6 +26,18 @@ const createChildWord = (): VocabularyItem => ({
   image: '🌟',
 })
 
+const hiddenWordsStorageKey = (childId: string) => `english-buddy:hidden-words:${childId}`
+
+function loadHiddenWordIds(childId: string): Set<string> {
+  try {
+    const stored = localStorage.getItem(hiddenWordsStorageKey(childId))
+    const parsed: unknown = stored ? JSON.parse(stored) : []
+    return Array.isArray(parsed) ? new Set(parsed.filter((id): id is string => typeof id === 'string')) : new Set()
+  } catch {
+    return new Set()
+  }
+}
+
 interface ChildDashboardProps {
   page: string
   onNavigate: (page: string) => void
@@ -87,13 +99,23 @@ export function ChildDashboard({
   const [deleteWordError, setDeleteWordError] = useState('')
   const [deletingWordId, setDeletingWordId] = useState<string | null>(null)
   const [search, setSearch] = useState('')
+  const [hiddenWords, setHiddenWords] = useState(() => ({ childId, ids: loadHiddenWordIds(childId) }))
+  const hiddenWordIds = useMemo(
+    () => hiddenWords.childId === childId ? hiddenWords.ids : loadHiddenWordIds(childId),
+    [childId, hiddenWords],
+  )
 
+  const childVocabulary = useMemo(
+    () => vocabulary.filter((item) => !hiddenWordIds.has(item.id)),
+    [hiddenWordIds, vocabulary],
+  )
+  const childWordIds = useMemo(() => new Set(childVocabulary.map((item) => item.id)), [childVocabulary])
   const progressByWord = useMemo(() => new Map(wordProgress.map((item) => [item.wordId, item])), [wordProgress])
   const level = levelFor(rewards.stars)
-  const achievements = useMemo(() => computeAchievements(rewards, vocabulary.length), [rewards, vocabulary.length])
+  const achievements = useMemo(() => computeAchievements(rewards, childVocabulary.length), [childVocabulary.length, rewards])
   const unlockedCount = achievements.filter((item) => item.progress >= item.goal).length
-  const wordOfDay = vocabulary[dayIndex(vocabulary.length)] ?? null
-  const masteredCount = wordProgress.filter((item) => item.mastery >= 100).length
+  const wordOfDay = childVocabulary[dayIndex(childVocabulary.length)] ?? null
+  const masteredCount = wordProgress.filter((item) => item.mastery >= 100 && childWordIds.has(item.wordId)).length
 
   const saveHint = !supabaseConfigured
     ? 'Practice mode: stars are kept on this device.'
@@ -102,16 +124,16 @@ export function ChildDashboard({
       : ''
 
   const reward = useCallback((event: RewardEvent, big = false) => {
-    const before = computeAchievements(rewards, vocabulary.length).filter((item) => item.progress >= item.goal).length
+    const before = computeAchievements(rewards, childVocabulary.length).filter((item) => item.progress >= item.goal).length
     const amount = record(event)
     if (amount > 0) setStarPop((current) => ({ key: current.key + 1, amount }))
     // Celebrate a big moment or a newly unlocked badge.
-    const after = computeAchievements(applyEvent(rewards, event), vocabulary.length).filter((item) => item.progress >= item.goal).length
+    const after = computeAchievements(applyEvent(rewards, event), childVocabulary.length).filter((item) => item.progress >= item.goal).length
     if (big || after > before) {
       setConfettiKey((key) => key + 1)
       if (!big) sounds.fanfare()
     }
-  }, [record, rewards, vocabulary.length])
+  }, [childVocabulary.length, record, rewards])
 
   const savePractice = (wordId: string, kind: 'spelling' | 'translation', score: number) => {
     if (!canSaveProgress || !profileId) return
@@ -150,14 +172,25 @@ export function ChildDashboard({
 
   const handleDeleteWord = async (item: VocabularyItem) => {
     const canDelete = !supabaseConfigured || (isParentSignedIn && item.canEdit)
-    if (!canDelete) return
-
-    const deletionScope = supabaseConfigured ? 'for everyone' : 'from this device'
-    if (!window.confirm(`Delete "${item.english}" ${deletionScope}? This also removes its saved practice scores and cannot be undone.`)) {
+    const prompt = canDelete
+      ? `Delete "${item.english}" ${supabaseConfigured ? 'for everyone' : 'from this device'}? This also removes its saved practice scores and cannot be undone.`
+      : `Hide "${item.english}" from this child's list on this device? It will remain in shared vocabulary.`
+    if (!window.confirm(prompt)) {
       return
     }
 
     setDeleteWordError('')
+    if (!canDelete) {
+      const nextHiddenIds = new Set(hiddenWordIds).add(item.id)
+      setHiddenWords({ childId, ids: nextHiddenIds })
+      try {
+        localStorage.setItem(hiddenWordsStorageKey(childId), JSON.stringify([...nextHiddenIds]))
+      } catch {
+        setDeleteWordError('The word is hidden for now, but this browser could not save the change for next time.')
+      }
+      return
+    }
+
     setDeletingWordId(item.id)
     try {
       await onDeleteVocabulary(item.id)
@@ -214,7 +247,7 @@ export function ChildDashboard({
           {[
             { icon: '⭐', value: rewards.stars, label: 'Stars', color: 'bg-amber-100 text-amber-700' },
             { icon: '🔥', value: rewards.streak, label: rewards.streak === 1 ? 'Day streak' : 'Days streak', color: 'bg-rose-100 text-rose-700' },
-            { icon: '📚', value: vocabulary.length, label: 'My words', color: 'bg-sky-100 text-sky-700' },
+            { icon: '📚', value: childVocabulary.length, label: 'My words', color: 'bg-sky-100 text-sky-700' },
             { icon: '🏅', value: unlockedCount, label: 'Badges', color: 'bg-emerald-100 text-emerald-700' },
           ].map((item) => (
             <div key={item.label} className={`rounded-3xl p-4 ${item.color}`}>
@@ -279,12 +312,12 @@ export function ChildDashboard({
 
   const renderWords = () => {
     const query = search.trim().toLowerCase()
-    const shown = query ? vocabulary.filter((item) => item.english.toLowerCase().includes(query) || item.arabic.includes(query)) : vocabulary
+    const shown = query ? childVocabulary.filter((item) => item.english.toLowerCase().includes(query) || item.arabic.includes(query)) : childVocabulary
     return (
       <div className="space-y-5">
         {deleteWordError ? <p role="alert" className="rounded-2xl bg-rose-50 p-3 font-semibold text-rose-800">{deleteWordError}</p> : null}
         {supabaseConfigured && !isParentSignedIn ? (
-          <p className="rounded-2xl bg-slate-100 p-3 text-sm font-semibold text-slate-600">A grown-up must sign in to delete words. Shared words can’t be deleted from Child view.</p>
+          <p className="rounded-2xl bg-slate-100 p-3 text-sm font-semibold text-slate-600">You can hide a word from this device. A grown-up must sign in to permanently delete a word for everyone.</p>
         ) : null}
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
@@ -298,6 +331,22 @@ export function ChildDashboard({
           >
             {showAddWord ? '✖ Close' : '➕ Add a word'}
           </button>
+          {hiddenWordIds.size ? (
+            <button
+              type="button"
+              onClick={() => {
+                setHiddenWords({ childId, ids: new Set() })
+                try {
+                  localStorage.removeItem(hiddenWordsStorageKey(childId))
+                } catch {
+                  setDeleteWordError('Hidden words are restored for now, but this browser could not save the change for next time.')
+                }
+              }}
+              className="rounded-full bg-slate-100 px-4 py-2 text-sm font-bold text-slate-700 hover:bg-slate-200"
+            >
+              ↩️ Show hidden words
+            </button>
+          ) : null}
         </div>
 
         {showAddWord ? (
@@ -348,7 +397,7 @@ export function ChildDashboard({
           </form>
         ) : null}
 
-        {vocabulary.length > 8 ? (
+        {childVocabulary.length > 8 ? (
           <input
             type="search"
             value={search}
@@ -358,10 +407,10 @@ export function ChildDashboard({
           />
         ) : null}
 
-        {vocabulary.length ? (
+        {childVocabulary.length ? (
           <>
             <p className="inline-flex rounded-full bg-indigo-50 px-4 py-1.5 font-black text-indigo-700">
-              {vocabulary.length} {vocabulary.length === 1 ? 'word' : 'words'} collected
+              {childVocabulary.length} {childVocabulary.length === 1 ? 'word' : 'words'} collected
             </p>
             <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
               {shown.map((item) => (
@@ -383,7 +432,7 @@ export function ChildDashboard({
                       onClick={() => void handleDeleteWord(item)}
                       disabled={deletingWordId === item.id}
                       className="rounded-2xl bg-rose-100 px-3 py-3 text-sm font-black text-rose-700 hover:bg-rose-200 disabled:cursor-wait disabled:opacity-50"
-                      aria-label={`Delete ${item.english}`}
+                      aria-label={`Remove ${item.english} from My Words`}
                     >
                       {deletingWordId === item.id ? '…' : '🗑️'}
                     </button>
@@ -396,8 +445,8 @@ export function ChildDashboard({
         ) : (
           <div className="rounded-[2rem] border-4 border-dashed border-slate-200 bg-white p-8 text-center">
             <p className="text-5xl">🌱</p>
-            <p className="mt-3 text-xl font-black text-slate-700">Your word garden is empty</p>
-            <p className="mt-1 text-slate-500">Tap “Add a word” to plant your first one!</p>
+            <p className="mt-3 text-xl font-black text-slate-700">{vocabulary.length ? 'No visible words in your garden' : 'Your word garden is empty'}</p>
+            <p className="mt-1 text-slate-500">{vocabulary.length ? 'Show hidden words or add a new one.' : 'Tap “Add a word” to plant your first one!'}</p>
           </div>
         )}
       </div>
@@ -443,9 +492,9 @@ export function ChildDashboard({
 
         <section className="rounded-[2rem] bg-white p-5 shadow-sm">
           <h3 className="text-xl font-black text-slate-800">🌟 My word stars</h3>
-          {vocabulary.length ? (
+          {childVocabulary.length ? (
             <ul className="mt-3 grid gap-2 sm:grid-cols-2">
-              {vocabulary.slice(0, 30).map((item) => (
+              {childVocabulary.slice(0, 30).map((item) => (
                 <li key={item.id} className="flex items-center justify-between gap-3 rounded-2xl bg-slate-50 px-4 py-2">
                   <span className="truncate font-bold text-slate-700">{item.english}</span>
                   <Stars count={wordStars(progressByWord.get(item.id)?.mastery ?? 0)} />
@@ -515,7 +564,7 @@ export function ChildDashboard({
       case 'practice':
         return (
           <PracticeGames
-            vocabulary={vocabulary}
+            vocabulary={childVocabulary}
             progressByWord={progressByWord}
             initialWordId={practiceWordId}
             onReward={(event) => reward(event)}
@@ -526,7 +575,7 @@ export function ChildDashboard({
       case 'quiz':
         return (
           <QuizGame
-            vocabulary={vocabulary}
+            vocabulary={childVocabulary}
             onReward={reward}
             onSaveResult={saveQuiz}
             onAddWords={() => { setShowAddWord(true); onNavigate('words') }}
